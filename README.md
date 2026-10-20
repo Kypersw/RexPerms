@@ -1,5 +1,5 @@
 # RexPerms
-
+[![RexPerms trailer](https://img.youtube.com/vi/cMLJXUCrY_E/maxresdefault.jpg)](https://youtu.be/cMLJXUCrY_E)
 A permission plugin for Minecraft servers that works the same way as LuckPerms: groups, inheritance,
 weights, temporary permissions, contexts (world/server/gamemode), tracks for promotion and demotion,
 prefixes/suffixes/meta, Vault and PlaceholderAPI support, YAML/SQLite/MySQL storage and network sync.
