@@ -9,6 +9,7 @@ One jar runs on **every version from 1.8.8 to 26.x**, on **Spigot, Paper and Pur
 Node keys use the same encoding as LuckPerms (`group.vip`, `prefix.100.&c[Admin] `, `meta.homes.5`,
 `weight.100`), so a `/lp export` file can be imported with a single command.
 
+For Support and Direct Download Link: https://craftrank.org/resources/1146-rexperms
 ---
 
 ## Compatibility
