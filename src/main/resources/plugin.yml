@@ -1,0 +1,23 @@
+name: RexPerms
+version: '${project.version}'
+main: xyz.rexos.rexperms.RexPermsPlugin
+# Ignored by 1.8–1.12; tells 1.13+ servers this is not a legacy plugin.
+api-version: '1.13'
+author: RexOS
+website: https://rex-os.xyz
+description: Advanced permission management - groups, inheritance, temporary permissions, contexts and tracks.
+softdepend: [Vault, PlaceholderAPI]
+
+commands:
+  rexperms:
+    description: RexPerms management command
+    aliases: [rp, rperms, perms, perm]
+    usage: /<command> help
+
+permissions:
+  rexperms.*:
+    description: Every RexPerms command
+    default: op
+  rexperms.log.notify:
+    description: Receive live notifications about permission changes
+    default: op

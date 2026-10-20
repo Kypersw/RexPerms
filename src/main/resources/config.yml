@@ -1,0 +1,97 @@
+# ╔══════════════════════════════════════════════════════════════╗
+# ║                     RexPerms Configuration                   ║
+# ╚══════════════════════════════════════════════════════════════╝
+
+# Name of this server, used for the "server" context.
+# On a network (BungeeCord/Velocity) give every server its own name:
+#   lobby, survival, skyblock ...
+# Leave it as "global" and server-specific nodes (server=x) never match;
+# only global nodes apply.
+server: global
+
+# ─────────────────────────────── Storage ───────────────────────────────
+storage:
+  # yaml    -> plugins/RexPerms/yaml-storage (single server, editable by hand)
+  # sqlite  -> plugins/RexPerms/rexperms.db (single server, fast with lots of data)
+  # mysql   -> for networks (every server shares the same database)
+  # mariadb -> same as mysql, uses the MariaDB driver when the server has it
+  type: yaml
+
+  # Prefix for SQL table names
+  table-prefix: 'rexperms_'
+
+  mysql:
+    host: localhost
+    port: 3306
+    database: minecraft
+    username: root
+    password: ''
+    pool-size: 8
+    use-ssl: false
+
+# ─────────────────────────── Network sync ───────────────────────────
+# MySQL/MariaDB only. A change on one server reaches the others
+# within a few seconds.
+sync:
+  enabled: true
+  interval-seconds: 3
+
+# ───────────────────────── Permission calculation ─────────────────────────
+permissions:
+  # Apply wildcards such as "essentials.*" and "*"
+  apply-wildcards: true
+
+  # Apply child permissions that plugins declare in their plugin.yml.
+  # E.g. granting "essentials.kits.*" unlocks every kit the plugin defines.
+  apply-bukkit-child-permissions: true
+
+  # When no node defines a permission, fall back to the plugin's default (op/true/false)
+  apply-bukkit-default-permissions: true
+
+  # Treat a user without any group as a member of "default"
+  default-group-fallback: true
+
+  # How the primary group is chosen:
+  #   parents-by-weight -> the user's heaviest group; follows promotions automatically (recommended)
+  #   stored            -> the group picked with /rp user X parent switchprimarygroup
+  primary-group-calculation: parents-by-weight
+
+  # Should operators have every permission?
+  # false is recommended so that staff permissions are managed through groups too.
+  # (While false, OP only matters for undefined permissions, through Bukkit's defaults.)
+  op-has-all-permissions: false
+
+# ───────────────────────────── Contexts ─────────────────────────────
+# Conditions that can be attached to nodes, e.g.:
+#   /rp user Steve permission set worldedit.* true world=creative
+contexts:
+  world: true
+  gamemode: false
+  dimension: false
+
+# ───────────────────────────── Chat ─────────────────────────────
+# Enable if you want RexPerms to format chat.
+# Leave disabled if you use EssentialsChat or another chat plugin.
+# Placeholders: {prefix} {suffix} {name} {displayname} {group} {world} {message}
+# Colours: both & codes (&c, &#ff5555) and MiniMessage (<red>, <gradient:...>) work.
+# RGB colours need 1.16+; older servers get the nearest of the 16 classic colours.
+chat:
+  enabled: false
+  format: '{prefix}{name}{suffix}&8 » &7{message}'
+  # Only players with this permission may use colour codes in their messages
+  color-permission: 'rexperms.chat.color'
+
+# Show prefix/suffix in the player list (TAB)
+tablist:
+  enabled: false
+  format: '{prefix}{name}{suffix}'
+
+# ───────────────────────────── Logging ─────────────────────────────
+log:
+  # Announce changes to staff with the "rexperms.log.notify" permission
+  notify: true
+  # Print changes to the console
+  console: true
+
+# How often temporary nodes are checked for expiry (seconds)
+expiry-check-interval: 5

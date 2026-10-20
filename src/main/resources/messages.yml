@@ -1,0 +1,225 @@
+# ╔══════════════════════════════════════════════════════════════╗
+# ║                       RexPerms Messages                      ║
+# ╚══════════════════════════════════════════════════════════════╝
+# Format: MiniMessage  ->  https://docs.advntr.dev/minimessage/format.html
+# <red>, <#ff5555>, <gradient:#a:#b>, <bold>, <hover:show_text:'...'> etc.
+# Placeholders like <holder> or <node> are filled in automatically.
+# Hover/click work on every version; RGB colours need 1.16+ (older
+# servers show the nearest classic colour).
+# Messages added in new versions are appended to this file automatically.
+
+prefix: '<gradient:#ff6b6b:#feca57><bold>RexPerms</bold></gradient> <dark_gray>»</dark_gray> '
+
+general:
+  no-permission: '<red>You do not have permission to do that. <dark_gray>(<permission>)'
+  no-access: '<red>You cannot use this command.'
+  usage: '<gray>Usage: <white><usage>'
+  unknown-command: '<red>Unknown sub-command. <gray>See <white>/<label> help'
+  invalid-boolean: '<red>"<input>" is not a valid value. <gray>Use true or false.'
+  invalid-duration: '<red>"<input>" is not a valid duration. <gray>Examples: <white>30m</white>, <white>12h</white>, <white>7d</white>, <white>1d12h</white>, <white>1mo</white>'
+  invalid-number: '<red>"<input>" is not a valid number.'
+  loading-user: '<gray>Loading <user>...'
+  searching: '<gray>Searching...'
+  storage-error: '<red>The storage operation failed. See the console for details.'
+  sync-started: '<gray>Reloading all data from storage...'
+  sync-complete: '<green>Sync complete. <gray>Other servers have been notified.'
+  reloaded: '<green>config.yml and messages.yml reloaded.'
+
+# Shown on the disconnect screen (no prefix)
+login:
+  load-failed: '<red>Your permission data could not be loaded.<newline><gray>Please reconnect in a few seconds.'
+  not-loaded: '<red>Your permission data is not ready yet.<newline><gray>Please reconnect.'
+  inject-failed: '<red>The permission system could not start for you.<newline><gray>Please tell an administrator.'
+
+# ─────────────────────────────── users ───────────────────────────────
+user:
+  not-found: '<red>No player named <user> was found. <gray>They must have joined before, or use their UUID.'
+  status-online: '<green>● Online'
+  status-offline: '<gray>○ Offline'
+  info:
+    - '<dark_gray><st>                    </st> <white><bold><user></bold></white> <dark_gray><st>                    </st>'
+    - ' <gray>UUID: <white><uuid>'
+    - ' <gray>Status: <status>'
+    - ' <gray>Primary group: <yellow><primary>'
+    - ' <gray>Groups: <white><parents>'
+    - ' <gray>Temporary groups: <white><temp_parents>'
+    - ' <gray>Prefix: <reset><prefix>  <gray>Suffix: <reset><suffix>'
+    - ' <gray>Nodes: <white><nodes>  <dark_gray>context: <context>'
+  cleared: '<green><holder></green> <gray>had <white><count></white> nodes removed<context> and is back in the default group.'
+  showtracks-header: '<gray>Tracks of <holder>:'
+  showtracks-entry: ' <dark_gray>•</dark_gray> <yellow><track></yellow><gray><context>:</gray> <path>'
+  showtracks-none: ' <gray>This player is not on any track.'
+
+# ─────────────────────────────── permissions ───────────────────────────────
+permission:
+  set: '<gray>Set <yellow><node></yellow> <dark_gray>→</dark_gray> <value> for <green><holder></green><gray><context>.'
+  already-has: '<yellow><holder></yellow> <gray>already has <white><node></white> <dark_gray>→</dark_gray> <value><gray><context>.'
+  unset: '<gray>Removed <yellow><node></yellow><context> from <green><holder></green>.'
+  lacks: '<red><holder> <gray>does not have a permanent <white><node></white><context>.'
+  lacks-temp: '<red><holder> <gray>does not have a temporary <white><node></white><context>.'
+  settemp: '<gray>Set <yellow><node></yellow> <dark_gray>→</dark_gray> <value> for <green><holder></green> <gray>for <aqua><duration></aqua><context>.'
+  unsettemp: '<gray>Removed temporary <yellow><node></yellow><context> from <green><holder></green>.'
+  temp-exists: '<red><holder> already has a temporary <white><node></white><context>. <gray>Add <white>accumulate</white> to extend it or <white>replace</white> to overwrite it.'
+  cleared: '<gray>Removed <white><count></white> permissions from <green><holder></green><context>.'
+  invalid-node: '<red>"<node>" is not a valid permission.'
+  special-node-hint: '<gray><italic>Note: "<node>" is a special node. The parent/meta commands are clearer for this.'
+  info-empty: '<gray><holder> has no permissions set.'
+  info-header: '<gray>Permissions of <holder> <dark_gray>(<count>, page <page>/<pages>) - click to remove'
+  info-entry: ' <dark_gray>•</dark_gray> <white><node></white> <value><gray><context></gray><aqua><expiry></aqua>'
+  check-header: '<gray>Checking <yellow><node></yellow> for <holder> <dark_gray>(context: <context>)'
+  check-own-none: ' <dark_gray>•</dark_gray> <gray>No node set directly.'
+  check-own-entry: ' <dark_gray>•</dark_gray> <gray>Direct: <value><gray><context></gray><aqua><expiry></aqua>'
+  check-result: ' <dark_gray>•</dark_gray> <gray>Result: <value> <dark_gray>(from: <white><source></white>, matched: <white><matched></white>)'
+  check-result-undefined: ' <dark_gray>•</dark_gray> <gray>Result: <yellow>undefined</yellow> <dark_gray>(the plugin''s default applies)'
+
+# ─────────────────────────────── parents ───────────────────────────────
+parent:
+  set: '<green><holder></green> <gray>is now only in <yellow><group></yellow><context>.'
+  add: '<green><holder></green> <gray>now inherits <yellow><group></yellow><context>.'
+  addtemp: '<green><holder></green> <gray>now inherits <yellow><group></yellow> for <aqua><duration></aqua><context>.'
+  remove: '<green><holder></green> <gray>no longer inherits <yellow><group></yellow><context>.'
+  already-has: '<yellow><holder></yellow> <gray>already inherits <white><group></white><context>.'
+  temp-exists: '<red><holder> already inherits <white><group></white> temporarily<context>. <gray>Add <white>accumulate</white> to extend it.'
+  lacks: '<red><holder> <gray>does not inherit <white><group></white><context>.'
+  cycle: '<red>That would create a loop: <white><parent></white> already inherits from <white><group></white>.'
+  self: '<red>A group cannot inherit from itself.'
+  cleared: '<gray>Removed <white><count></white> groups from <green><holder></green><context>.'
+  primary-users-only: '<red>Only users have a primary group.'
+  primary-not-member: '<red><holder> <gray>is not in <white><group></white>. Add them to it first.'
+  primary-switched: '<green><holder></green><gray>''s primary group is now <yellow><group></yellow>.'
+  info-empty: '<gray><holder> does not inherit any group.'
+  info-header: '<gray>Groups of <holder> <dark_gray>(<count>) - click to remove'
+  info-entry: ' <dark_gray>•</dark_gray> <yellow><group></yellow><gold><primary></gold> <dark_gray>(weight <weight>)</dark_gray><red><missing></red><gray><context></gray><aqua><expiry></aqua>'
+
+# ─────────────────────────────── meta / prefix ───────────────────────────────
+meta:
+  set: '<green><holder></green> <gray>meta: <yellow><key></yellow> = <white><value></white><context>'
+  unset: '<gray>Removed meta <yellow><key></yellow><context> from <green><holder></green>.'
+  lacks: '<red><holder> <gray>has no <white><key></white><context> meta.'
+  invalid-key: '<red>Meta keys cannot contain dots: <white><key>'
+  prefix-set: '<green><holder></green><gray>''s prefix is now <reset><text></reset> <dark_gray>(priority <priority>)</dark_gray><aqua><duration></aqua><gray><context>'
+  suffix-set: '<green><holder></green><gray>''s suffix is now <reset><text></reset> <dark_gray>(priority <priority>)</dark_gray><aqua><duration></aqua><gray><context>'
+  chat-already: '<yellow><holder></yellow> <gray>already has that text <dark_gray>(priority <priority>)</dark_gray><context>.'
+  prefix-removed: '<gray>Removed <white><count></white> prefix(es) with priority <white><priority></white> from <green><holder></green><context>.'
+  suffix-removed: '<gray>Removed <white><count></white> suffix(es) with priority <white><priority></white> from <green><holder></green><context>.'
+  prefix-lacks: '<red><holder> <gray>has no prefix with priority <white><priority></white><context>.'
+  suffix-lacks: '<red><holder> <gray>has no suffix with priority <white><priority></white><context>.'
+  cleared: '<gray>Removed <white><count></white> prefixes/suffixes/meta from <green><holder></green><context>.'
+  info-header: '<gray>Chat and meta data of <holder> <dark_gray>- click to remove'
+  info-prefixes: ' <gold>Prefixes <dark_gray>(<count>)'
+  info-suffixes: ' <gold>Suffixes <dark_gray>(<count>)'
+  info-meta: ' <gold>Meta <dark_gray>(<count>)'
+  info-chat-entry: '   <dark_gray><priority> →</dark_gray> <reset><text></reset> <dark_gray>"<raw>"</dark_gray><gray><context></gray><aqua><expiry></aqua>'
+  info-meta-entry: '   <yellow><key></yellow> <dark_gray>=</dark_gray> <white><value></white><gray><context></gray><aqua><expiry></aqua>'
+  info-effective: ' <gray>Effective (inherited): prefix <reset><prefix></reset> <gray>suffix <reset><suffix>'
+
+# ─────────────────────────────── groups ───────────────────────────────
+group:
+  not-found: '<red>There is no group named <group>.'
+  invalid-name: '<red>"<group>" is not a valid name. <gray>Use lower-case letters, digits, _ and - (max 36 characters).'
+  already-exists: '<red>The group <group> already exists.'
+  created: '<gray>Created the group <green><group></green>.'
+  deleting: '<gray>Deleting <group> and cleaning up every reference...'
+  deleted: '<gray>Deleted the group <green><group></green>. <dark_gray>(<count> offline players updated)'
+  cannot-delete-default: '<red>The default group cannot be deleted.'
+  cannot-rename-default: '<red>The default group cannot be renamed.'
+  weight-set: '<gray>Set the weight of <green><group></green> to <white><weight></white>.'
+  displayname-set: '<gray>Display name of <green><group></green>: <reset><display>'
+  renamed: '<gray>Renamed <green><old></green> to <yellow><new></yellow>. <dark_gray>(<count> offline players updated)'
+  cloned: '<gray>Copied <green><old></green> to <yellow><new></yellow>.'
+  info:
+    - '<dark_gray><st>                    </st> <white><bold><group></bold></white> <dark_gray><st>                    </st>'
+    - ' <gray>Display name: <reset><display>'
+    - ' <gray>Weight: <white><weight>'
+    - ' <gray>Parents: <white><parents>'
+    - ' <gray>Prefix: <reset><prefix>  <gray>Suffix: <reset><suffix>'
+    - ' <gray>Permissions: <white><permissions>'
+    - ' <gray>Tracks: <white><tracks>'
+  list-header: '<gray>Groups <dark_gray>(<count>, page <page>/<pages>) - click for info'
+  list-entry: ' <dark_gray>•</dark_gray> <yellow><group></yellow> <dark_gray>[<weight>]</dark_gray> <reset><prefix>'
+  listmembers-none: '<gray><group> has no members.'
+  listmembers-header: '<gray>Members of <group> <dark_gray>(<count>, page <page>/<pages>)'
+  listmembers-entry: ' <dark_gray>•</dark_gray> <gray><type></gray> <white><name></white><gray><context></gray><aqua><expiry></aqua>'
+  showtracks-none: '<gray><group> is not on any track.'
+  showtracks-header: '<gray>Tracks containing <group>:'
+  showtracks-entry: ' <dark_gray>•</dark_gray> <yellow><track></yellow><gray>: <path>'
+
+# ─────────────────────────────── tracks ───────────────────────────────
+track:
+  not-found: '<red>There is no track named <track>.'
+  invalid-name: '<red>"<track>" is not a valid track name.'
+  already-exists: '<red>The track <track> already exists.'
+  created: '<gray>Created the track <green><track></green>: <white><path>'
+  skipped-missing: '<yellow>Skipped groups that do not exist: <white><groups>'
+  deleted: '<gray>Deleted the track <green><track></green>.'
+  list-empty: '<gray>There are no tracks yet. <white>/<label> createtrack <name> <group1> <group2>...'
+  list-header: '<gray>Tracks <dark_gray>(<count>) - click for info'
+  list-entry: ' <dark_gray>•</dark_gray> <yellow><track></yellow><gray>: <white><path>'
+  info-header: '<gray>Track <track> <dark_gray>(<count> groups)'
+  info-empty: ' <gray>The track is empty.'
+  info-entry: ' <dark_gray><index>.</dark_gray> <yellow><group></yellow><red><missing>'
+  group-added: '<gray>Added <green><group></green> to <track>: <white><path>'
+  already-contains: '<red><track> already contains <group>.'
+  not-contains: '<red><track> does not contain <group>.'
+  group-removed: '<gray>Removed <green><group></green> from <track>: <white><path>'
+  cleared: '<gray>Cleared the track <green><track></green>.'
+  renamed: '<gray>Renamed the track <green><old></green> to <yellow><new></yellow>.'
+  cloned: '<gray>Copied the track <green><old></green> to <yellow><new></yellow>.'
+  empty: '<red>The track <track> is empty.'
+  ambiguous: '<red><holder> is on more than one group of <track>. <gray>Remove the extra ones first.'
+  not-on-track: '<red><holder> is not on any group of <track>.'
+  group-missing: '<red>A group on <track> no longer exists. <gray>Fix the track first.'
+  end-of-track: '<yellow><holder></yellow> <gray>is already at the top of <track> (<white><group></white>).'
+  promoted: '<green><holder></green> <gray>was promoted: <white><from></white> <dark_gray>→</dark_gray> <yellow><to></yellow> <dark_gray>(<track>)</dark_gray><context>'
+  demoted: '<green><holder></green> <gray>was demoted: <white><from></white> <dark_gray>→</dark_gray> <yellow><to></yellow> <dark_gray>(<track>)</dark_gray><context>'
+  added-to-first: '<green><holder></green> <gray>was added to the first group of <track>: <yellow><to></yellow><context>'
+  removed-from-track: '<green><holder></green> <gray>was taken off <track> (from <white><from></white>)<context>'
+  notify-promoted: '<gradient:#55efc4:#81ecec>Congratulations!</gradient> <gray>Your new rank: <reset><group>'
+  notify-demoted: '<gray>Your rank changed: <reset><group>'
+
+# ─────────────────────────────── search / log / verbose ───────────────────────────────
+search:
+  none: '<gray>No results for "<query>".'
+  header: '<gray>Results for "<query>" <dark_gray>(<count>, page <page>/<pages>)'
+  entry: ' <dark_gray>•</dark_gray> <gray><type></gray> <white><name></white> <dark_gray>→</dark_gray> <yellow><node></yellow> <value><gray><context></gray><aqua><expiry></aqua>'
+
+verbose:
+  enabled: '<green>Verbose enabled. <gray>Filter: <white><filter></white> <dark_gray>(/<label> verbose off to stop)'
+  disabled: '<gray>Verbose disabled.'
+  entry: '<dark_gray>[V]</dark_gray> <white><player></white> <dark_gray>·</dark_gray> <gray><permission></gray> <dark_gray>→</dark_gray> <result>'
+
+log:
+  empty: '<gray>No log entries found.'
+  header: '<gray>Change log: <white><target></white> <dark_gray>(<count>, page <page>/<pages>)'
+  entry: ' <dark_gray><ago> ago</dark_gray> <white><actor></white> <dark_gray>→</dark_gray> <gray><type></gray> <yellow><target></yellow><dark_gray>:</dark_gray> <gray><action>'
+  notify: '<dark_gray>[Log]</dark_gray> <white><actor></white> <dark_gray>→</dark_gray> <yellow><target></yellow><dark_gray>:</dark_gray> <gray><action>'
+
+migration:
+  console-only: '<red>Imports can only be run from the console.'
+  console-or-op: '<red>Exports can only be run by the console or an operator.'
+  export-started: '<gray>Exporting data...'
+  export-done: '<green>Export complete: <white>plugins/RexPerms/<file>'
+  import-started: '<gray>Importing <file>...'
+  import-done: '<green>Import complete: <white><groups></white> groups, <white><tracks></white> tracks, <white><users></white> users. <gray>(<skipped> entries skipped)'
+  failed: '<red>Operation failed: <white><error>'
+
+# ─────────────────────────────── help ───────────────────────────────
+help:
+  - '<dark_gray><st>              </st> <gradient:#ff6b6b:#feca57><bold>RexPerms</bold></gradient> <gray>Help</gray> <dark_gray><st>              </st>'
+  - '<hover:show_text:''<gray>Click to type''><click:suggest_command:''/<label> user ''><yellow>/<label> user <player></yellow> <gray>info | permission | parent | meta | promote | demote</gray></click></hover>'
+  - '<hover:show_text:''<gray>Click to type''><click:suggest_command:''/<label> group ''><yellow>/<label> group <group></yellow> <gray>info | permission | parent | meta | setweight | listmembers</gray></click></hover>'
+  - '<hover:show_text:''<gray>Click to type''><click:suggest_command:''/<label> track ''><yellow>/<label> track <track></yellow> <gray>info | append | insert | remove | clear</gray></click></hover>'
+  - '<click:suggest_command:''/<label> creategroup ''><yellow>/<label> creategroup <name> [weight]</yellow></click> <dark_gray>·</dark_gray> <click:suggest_command:''/<label> deletegroup ''><yellow>deletegroup</yellow></click> <dark_gray>·</dark_gray> <click:run_command:''/<label> listgroups''><yellow>listgroups</yellow></click>'
+  - '<click:suggest_command:''/<label> createtrack ''><yellow>/<label> createtrack <name> <groups...></yellow></click> <dark_gray>·</dark_gray> <click:suggest_command:''/<label> deletetrack ''><yellow>deletetrack</yellow></click> <dark_gray>·</dark_gray> <click:run_command:''/<label> listtracks''><yellow>listtracks</yellow></click>'
+  - '<click:suggest_command:''/<label> check ''><yellow>/<label> check <player> <permission></yellow></click> <gray>shows where a permission comes from'
+  - '<click:suggest_command:''/<label> search ''><yellow>/<label> search <node></yellow></click> <gray>finds everyone holding a node</gray>'
+  - '<click:suggest_command:''/<label> verbose on ''><yellow>/<label> verbose on [filter]</yellow></click> <gray>watch permission checks live</gray>'
+  - '<click:run_command:''/<label> log''><yellow>/<label> log [target]</yellow></click> <gray>change log</gray> <dark_gray>·</dark_gray> <click:run_command:''/<label> sync''><yellow>sync</yellow></click> <dark_gray>·</dark_gray> <click:run_command:''/<label> reload''><yellow>reload</yellow></click> <dark_gray>·</dark_gray> <click:run_command:''/<label> info''><yellow>info</yellow></click>'
+  - '<yellow>/<label> export [name]</yellow> <dark_gray>·</dark_gray> <yellow>import <file></yellow> <gray>(LuckPerms /lp export files work too)</gray>'
+  - '<dark_gray>Durations: 30m, 12h, 7d, 1mo · Contexts: world=x server=y · Text with spaces: "&c[Admin] "'
+
+info:
+  - '<dark_gray><st>              </st> <gradient:#ff6b6b:#feca57><bold>RexPerms</bold></gradient> <gray>v<version></gray> <dark_gray><st>              </st>'
+  - ' <gray>Platform: <white><platform></white>  <dark_gray>·</dark_gray>  Storage: <white><storage></white>  <dark_gray>·</dark_gray>  Server: <white><server></white>'
+  - ' <gray>Network sync: <white><sync></white>  <dark_gray>·</dark_gray>  Groups: <white><groups></white>  <dark_gray>·</dark_gray>  Tracks: <white><tracks></white>'
+  - ' <gray>Loaded users: <white><users></white> <dark_gray>(<online> online)</dark_gray>  <dark_gray>·</dark_gray>  Vault: <white><vault></white>  <dark_gray>·</dark_gray>  PlaceholderAPI: <white><papi>'
