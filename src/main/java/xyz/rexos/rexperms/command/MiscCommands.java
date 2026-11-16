@@ -1,10 +1,13 @@
 package xyz.rexos.rexperms.command;
 
 import net.kyori.adventure.text.Component;
+
 import org.bukkit.Bukkit;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.ConsoleCommandSender;
+
 import xyz.rexos.rexperms.RexPermsPlugin;
+import xyz.rexos.rexperms.api.event.PreAdministrativeOperationEvent;
 import xyz.rexos.rexperms.config.Messages;
 import xyz.rexos.rexperms.migration.MigrationService;
 import xyz.rexos.rexperms.model.Group;
@@ -42,18 +45,29 @@ final class MiscCommands extends CommandSupport {
 
     void info(CommandSender s) {
         if (!allowed(s, "info")) return;
-        msg().sendList(s, "info",
-                Messages.text("version", plugin.getDescription().getVersion()),
-                Messages.text("platform", Bukkit.getName() + " " + ServerVersion.describe()),
-                Messages.text("storage", plugin.getStorage().storage().getName()),
-                Messages.text("server", plugin.getSettings().server()),
-                Messages.text("sync", plugin.getSyncPoller() != null ? "on" : "off"),
-                Messages.text("groups", plugin.getGroupManager().all().size()),
-                Messages.text("tracks", plugin.getTrackManager().all().size()),
-                Messages.text("users", plugin.getUserManager().all().size()),
-                Messages.text("online", Bukkit.getOnlinePlayers().size()),
-                Messages.text("vault", Bukkit.getPluginManager().getPlugin("Vault") != null ? "hooked" : "not found"),
-                Messages.text("papi", Bukkit.getPluginManager().getPlugin("PlaceholderAPI") != null ? "hooked" : "not found"));
+        msg().sendList(
+                        s,
+                        "info",
+                        Messages.text("version", plugin.getDescription().getVersion()),
+                        Messages.text(
+                                "platform", Bukkit.getName() + " " + ServerVersion.describe()),
+                        Messages.text("storage", plugin.getStorage().storage().getName()),
+                        Messages.text("server", plugin.getSettings().server()),
+                        Messages.text("sync", plugin.getSyncPoller() != null ? "on" : "off"),
+                        Messages.text("groups", plugin.getGroupManager().all().size()),
+                        Messages.text("tracks", plugin.getTrackManager().all().size()),
+                        Messages.text("users", plugin.getUserManager().all().size()),
+                        Messages.text("online", Bukkit.getOnlinePlayers().size()),
+                        Messages.text(
+                                "vault",
+                                Bukkit.getPluginManager().getPlugin("Vault") != null
+                                        ? "hooked"
+                                        : "not found"),
+                        Messages.text(
+                                "papi",
+                                Bukkit.getPluginManager().getPlugin("PlaceholderAPI") != null
+                                        ? "hooked"
+                                        : "not found"));
     }
 
     // ------------------------------------------------------------------ groups
@@ -81,8 +95,11 @@ final class MiscCommands extends CommandSupport {
         Group group = plugin.getGroupManager().getOrCreate(name);
         if (weight != null) group.setNode(Node.weight(weight));
         if (a.has(2)) group.setNode(Node.displayName(a.get(2)));
-        plugin.getService().createGroup(name, s).thenAcceptAsync(g ->
-                msg().send(s, "group.created", Messages.text("group", name)), plugin.mainThread());
+        plugin.getService()
+                .createGroup(name, s)
+                .thenAcceptAsync(
+                        g -> msg().send(s, "group.created", Messages.text("group", name)),
+                        plugin.mainThread());
     }
 
     void deleteGroupCommand(CommandSender s, String label, Args a) {
@@ -106,26 +123,55 @@ final class MiscCommands extends CommandSupport {
             return;
         }
         msg.send(s, "group.deleting", Messages.text("group", lower));
-        plugin.getService().deleteGroup(lower, s).thenAcceptAsync(updated ->
-                        msg.send(s, "group.deleted", Messages.text("group", lower), Messages.text("count", updated)),
-                plugin.mainThread()).exceptionally(t -> {
-            msg.send(s, "general.storage-error");
-            return null;
-        });
+        plugin.getService()
+                .deleteGroup(lower, s)
+                .thenAcceptAsync(
+                        updated ->
+                                msg.send(
+                                        s,
+                                        "group.deleted",
+                                        Messages.text("group", lower),
+                                        Messages.text("count", updated)),
+                        plugin.mainThread())
+                .exceptionally(
+                        t -> {
+                            msg.send(s, "general.storage-error");
+                            return null;
+                        });
     }
 
     void listGroups(CommandSender s, final String label, Args a) {
         if (!allowed(s, "listgroups")) return;
         List<Group> groups = plugin.getGroupManager().sorted();
-        paginate(s, groups, parsePage(a, 0), "group.list-header", Messages.text("label", label), g -> {
-            String prefix = plugin.getCalculator().calculateMeta(g, plugin.getContextManager().staticContext()).prefix();
-            Component line = msg().component("group.list-entry",
-                    Messages.text("group", g.getName()),
-                    Messages.comp("display", Text.colorize(g.getPlainDisplayName())),
-                    Messages.text("weight", g.getWeight()),
-                    Messages.comp("prefix", prefix == null ? Component.empty() : Text.colorize(prefix)));
-            return clickable(line, "/" + label + " group " + g.getName() + " info", "Click for info");
-        });
+        paginate(
+                s,
+                groups,
+                parsePage(a, 0),
+                "group.list-header",
+                Messages.text("label", label),
+                g -> {
+                    String prefix =
+                            plugin.getCalculator()
+                                    .calculateMeta(g, plugin.getContextManager().staticContext())
+                                    .prefix();
+                    Component line =
+                            msg().component(
+                                            "group.list-entry",
+                                            Messages.text("group", g.getName()),
+                                            Messages.comp(
+                                                    "display",
+                                                    Text.colorize(g.getPlainDisplayName())),
+                                            Messages.text("weight", g.getWeight()),
+                                            Messages.comp(
+                                                    "prefix",
+                                                    prefix == null
+                                                            ? Component.empty()
+                                                            : Text.colorize(prefix)));
+                    return clickable(
+                            line,
+                            "/" + label + " group " + g.getName() + " info",
+                            "Click for info");
+                });
     }
 
     // ------------------------------------------------------------------ tracks
@@ -145,6 +191,12 @@ final class MiscCommands extends CommandSupport {
             msg().send(s, "track.already-exists", Messages.text("track", name));
             return;
         }
+        if (!plugin.getService()
+                .authorizeLifecycle(
+                        PreAdministrativeOperationEvent.Operation.TRACK_CREATE, s, name, null)) {
+            s.sendMessage("§cRexPerms: track creation denied by policy.");
+            return;
+        }
         Track track = plugin.getTrackManager().getOrCreate(name);
         List<String> missing = new ArrayList<String>();
         for (int i = 1; i < a.size(); i++) {
@@ -152,11 +204,18 @@ final class MiscCommands extends CommandSupport {
             if (plugin.getGroupManager().exists(g)) track.append(g);
             else missing.add(g);
         }
-        plugin.getService().commitTrack(track, s, "created" + (track.size() > 0 ? " (" + track + ")" : ""));
-        msg().send(s, "track.created", Messages.text("track", name),
-                Messages.text("path", track.size() == 0 ? "-" : track.toString()));
+        plugin.getService()
+                .commitTrack(track, s, "created" + (track.size() > 0 ? " (" + track + ")" : ""));
+        msg().send(
+                        s,
+                        "track.created",
+                        Messages.text("track", name),
+                        Messages.text("path", track.size() == 0 ? "-" : track.toString()));
         if (!missing.isEmpty()) {
-            msg().send(s, "track.skipped-missing", Messages.text("groups", Text.join(", ", missing)));
+            msg().send(
+                            s,
+                            "track.skipped-missing",
+                            Messages.text("groups", Text.join(", ", missing)));
         }
     }
 
@@ -175,27 +234,38 @@ final class MiscCommands extends CommandSupport {
             return;
         }
         plugin.getService().deleteTrack(name, s);
-        plugin.getMessages().send(s, "track.deleted", Messages.text("track", name.toLowerCase(Locale.ROOT)));
+        plugin.getMessages()
+                .send(s, "track.deleted", Messages.text("track", name.toLowerCase(Locale.ROOT)));
     }
 
     void listTracks(CommandSender s, String label) {
         if (!allowed(s, "listtracks")) return;
         List<Track> tracks = new ArrayList<Track>(plugin.getTrackManager().all());
-        Collections.sort(tracks, new Comparator<Track>() {
-            @Override
-            public int compare(Track a, Track b) {
-                return a.getName().compareTo(b.getName());
-            }
-        });
+        Collections.sort(
+                tracks,
+                new Comparator<Track>() {
+                    @Override
+                    public int compare(Track a, Track b) {
+                        return a.getName().compareTo(b.getName());
+                    }
+                });
         if (tracks.isEmpty()) {
             msg().send(s, "track.list-empty", Messages.text("label", label));
             return;
         }
         msg().send(s, "track.list-header", Messages.text("count", tracks.size()));
         for (Track t : tracks) {
-            Component line = msg().component("track.list-entry", Messages.text("track", t.getName()),
-                    Messages.text("path", t.size() == 0 ? "-" : t.toString()));
-            msg().send(s, clickable(line, "/" + label + " track " + t.getName() + " info", "Click for info"));
+            Component line =
+                    msg().component(
+                                    "track.list-entry",
+                                    Messages.text("track", t.getName()),
+                                    Messages.text("path", t.size() == 0 ? "-" : t.toString()));
+            msg().send(
+                            s,
+                            clickable(
+                                    line,
+                                    "/" + label + " track " + t.getName() + " info",
+                                    "Click for info"));
         }
     }
 
@@ -217,51 +287,96 @@ final class MiscCommands extends CommandSupport {
             filter = n -> n.key().equalsIgnoreCase(query);
         }
         msg().send(s, "general.searching");
-        plugin.getStorage().submit(st -> {
-            List<HeldNode> out = new ArrayList<HeldNode>(st.searchGroupNodes(filter));
-            out.addAll(st.searchUserNodes(filter));
-            return out;
-        }).thenAcceptAsync(results -> {
-            if (results.isEmpty()) {
-                msg().send(s, "search.none", Messages.text("query", query));
-                return;
-            }
-            Collections.sort(results, new Comparator<HeldNode>() {
-                @Override
-                public int compare(HeldNode x, HeldNode y) {
-                    int c = x.holderType().ordinal() - y.holderType().ordinal();
-                    return c != 0 ? c : x.holderName().toLowerCase(Locale.ROOT)
-                            .compareTo(y.holderName().toLowerCase(Locale.ROOT));
-                }
-            });
-            paginate(s, results, page, "search.header", Messages.text("query", query), h -> {
-                boolean user = h.holderType() == HolderType.USER;
-                Component line = msg().component("search.entry",
-                        Messages.text("type", user ? "user" : "group"),
-                        Messages.text("name", h.holderName()),
-                        Messages.text("node", h.node().key()),
-                        Messages.comp("value", value(h.node().value())),
-                        ctx(h.node().contexts()),
-                        Messages.text("expiry", expiryText(h.node())));
-                return clickable(line, "/" + label + " " + (user ? "user " : "group ") + h.holderName() + " info",
-                        "Click for info");
-            });
-        }, plugin.mainThread()).exceptionally(t -> {
-            msg().send(s, "general.storage-error");
-            return null;
-        });
+        plugin.getStorage()
+                .submit(
+                        st -> {
+                            List<HeldNode> out =
+                                    new ArrayList<HeldNode>(st.searchGroupNodes(filter));
+                            out.addAll(st.searchUserNodes(filter));
+                            return out;
+                        })
+                .thenAcceptAsync(
+                        results -> {
+                            if (results.isEmpty()) {
+                                msg().send(s, "search.none", Messages.text("query", query));
+                                return;
+                            }
+                            Collections.sort(
+                                    results,
+                                    new Comparator<HeldNode>() {
+                                        @Override
+                                        public int compare(HeldNode x, HeldNode y) {
+                                            int c =
+                                                    x.holderType().ordinal()
+                                                            - y.holderType().ordinal();
+                                            return c != 0
+                                                    ? c
+                                                    : x.holderName()
+                                                            .toLowerCase(Locale.ROOT)
+                                                            .compareTo(
+                                                                    y.holderName()
+                                                                            .toLowerCase(
+                                                                                    Locale.ROOT));
+                                        }
+                                    });
+                            paginate(
+                                    s,
+                                    results,
+                                    page,
+                                    "search.header",
+                                    Messages.text("query", query),
+                                    h -> {
+                                        boolean user = h.holderType() == HolderType.USER;
+                                        Component line =
+                                                msg().component(
+                                                                "search.entry",
+                                                                Messages.text(
+                                                                        "type",
+                                                                        user ? "user" : "group"),
+                                                                Messages.text(
+                                                                        "name", h.holderName()),
+                                                                Messages.text(
+                                                                        "node", h.node().key()),
+                                                                Messages.comp(
+                                                                        "value",
+                                                                        value(h.node().value())),
+                                                                ctx(h.node().contexts()),
+                                                                Messages.text(
+                                                                        "expiry",
+                                                                        expiryText(h.node())));
+                                        return clickable(
+                                                line,
+                                                "/"
+                                                        + label
+                                                        + " "
+                                                        + (user ? "user " : "group ")
+                                                        + h.holderName()
+                                                        + " info",
+                                                "Click for info");
+                                    });
+                        },
+                        plugin.mainThread())
+                .exceptionally(
+                        t -> {
+                            msg().send(s, "general.storage-error");
+                            return null;
+                        });
     }
 
     // ------------------------------------------------------------------ verbose
 
     void verbose(CommandSender s, String label, Args a) {
         if (!allowed(s, "verbose")) return;
-        String mode = a.has(0) ? a.lower(0) : (plugin.getVerboseHandler().isListening(s) ? "off" : "on");
+        String mode =
+                a.has(0) ? a.lower(0) : (plugin.getVerboseHandler().isListening(s) ? "off" : "on");
         if (mode.equals("on")) {
             String filter = a.has(1) ? a.get(1) : "";
             plugin.getVerboseHandler().enable(s, filter);
-            msg().send(s, "verbose.enabled", Messages.text("filter", filter.isEmpty() ? "everything" : filter),
-                    Messages.text("label", label));
+            msg().send(
+                            s,
+                            "verbose.enabled",
+                            Messages.text("filter", filter.isEmpty() ? "everything" : filter),
+                            Messages.text("label", label));
         } else if (mode.equals("off")) {
             plugin.getVerboseHandler().disable(s);
             msg().send(s, "verbose.disabled");
@@ -287,24 +402,43 @@ final class MiscCommands extends CommandSupport {
         }
         final String filter = target;
         final int finalPage = page;
-        plugin.getStorage().submit(st -> st.recentActions(200, filter)).thenAcceptAsync(actions -> {
-            if (actions.isEmpty()) {
-                msg().send(s, "log.empty");
-                return;
-            }
-            final long now = System.currentTimeMillis() / 1000L;
-            CommandSupport.LineRenderer<LoggedAction> renderer = e -> msg().component("log.entry",
-                    Messages.text("ago", Durations.formatShort(now - e.time())),
-                    Messages.text("actor", e.actorName()),
-                    Messages.text("type", e.targetTypeName()),
-                    Messages.text("target", e.targetName()),
-                    Messages.text("action", e.description()));
-            paginate(s, actions, finalPage, "log.header",
-                    Messages.text("target", filter == null ? "all" : filter), renderer);
-        }, plugin.mainThread()).exceptionally(t -> {
-            msg().send(s, "general.storage-error");
-            return null;
-        });
+        plugin.getStorage()
+                .submit(st -> st.recentActions(200, filter))
+                .thenAcceptAsync(
+                        actions -> {
+                            if (actions.isEmpty()) {
+                                msg().send(s, "log.empty");
+                                return;
+                            }
+                            final long now = System.currentTimeMillis() / 1000L;
+                            CommandSupport.LineRenderer<LoggedAction> renderer =
+                                    e ->
+                                            msg().component(
+                                                            "log.entry",
+                                                            Messages.text(
+                                                                    "ago",
+                                                                    Durations.formatShort(
+                                                                            now - e.time())),
+                                                            Messages.text("actor", e.actorName()),
+                                                            Messages.text(
+                                                                    "type", e.targetTypeName()),
+                                                            Messages.text("target", e.targetName()),
+                                                            Messages.text(
+                                                                    "action", e.description()));
+                            paginate(
+                                    s,
+                                    actions,
+                                    finalPage,
+                                    "log.header",
+                                    Messages.text("target", filter == null ? "all" : filter),
+                                    renderer);
+                        },
+                        plugin.mainThread())
+                .exceptionally(
+                        t -> {
+                            msg().send(s, "general.storage-error");
+                            return null;
+                        });
     }
 
     // ------------------------------------------------------------------ management
@@ -312,13 +446,19 @@ final class MiscCommands extends CommandSupport {
     void sync(final CommandSender s) {
         if (!allowed(s, "sync")) return;
         msg().send(s, "general.sync-started");
-        plugin.getService().fullReload().thenRunAsync(() -> {
-            plugin.getService().broadcastFullSync();
-            msg().send(s, "general.sync-complete");
-        }, plugin.mainThread()).exceptionally(t -> {
-            msg().send(s, "general.storage-error");
-            return null;
-        });
+        plugin.getService()
+                .fullReload()
+                .thenRunAsync(
+                        () -> {
+                            plugin.getService().broadcastFullSync();
+                            msg().send(s, "general.sync-complete");
+                        },
+                        plugin.mainThread())
+                .exceptionally(
+                        t -> {
+                            msg().send(s, "general.storage-error");
+                            return null;
+                        });
     }
 
     void reload(CommandSender s) {
@@ -333,14 +473,26 @@ final class MiscCommands extends CommandSupport {
             msg().send(s, "migration.console-or-op");
             return;
         }
-        String name = a.has(0) ? a.get(0) : "rexperms-backup-" + (System.currentTimeMillis() / 1000L);
+        String name =
+                a.has(0) ? a.get(0) : "rexperms-backup-" + (System.currentTimeMillis() / 1000L);
         msg().send(s, "migration.export-started");
-        migration.export(name).thenAcceptAsync(file ->
-                        msg().send(s, "migration.export-done", Messages.text("file", file.getName())),
-                plugin.mainThread()).exceptionally(t -> {
-            msg().send(s, "migration.failed", Messages.text("error", rootMessage(t)));
-            return null;
-        });
+        migration
+                .export(name)
+                .thenAcceptAsync(
+                        file ->
+                                msg().send(
+                                                s,
+                                                "migration.export-done",
+                                                Messages.text("file", file.getName())),
+                        plugin.mainThread())
+                .exceptionally(
+                        t -> {
+                            msg().send(
+                                            s,
+                                            "migration.failed",
+                                            Messages.text("error", rootMessage(t)));
+                            return null;
+                        });
     }
 
     void importData(final CommandSender s, String label, Args a) {
@@ -350,20 +502,34 @@ final class MiscCommands extends CommandSupport {
             return;
         }
         if (!a.has(0)) {
-            usage(s, "/" + label + " import <file.json.gz>   (a RexPerms or LuckPerms /lp export file)");
+            usage(
+                    s,
+                    "/"
+                            + label
+                            + " import <file.json.gz>   (a RexPerms or LuckPerms /lp export file)");
             return;
         }
         msg().send(s, "migration.import-started", Messages.text("file", a.get(0)));
-        migration.importFile(a.get(0)).thenAcceptAsync(result ->
-                        msg().send(s, "migration.import-done",
-                                Messages.text("groups", result.groups()),
-                                Messages.text("tracks", result.tracks()),
-                                Messages.text("users", result.users()),
-                                Messages.text("skipped", result.skipped())),
-                plugin.mainThread()).exceptionally(t -> {
-            msg().send(s, "migration.failed", Messages.text("error", rootMessage(t)));
-            return null;
-        });
+        migration
+                .importFile(a.get(0))
+                .thenAcceptAsync(
+                        result ->
+                                msg().send(
+                                                s,
+                                                "migration.import-done",
+                                                Messages.text("groups", result.groups()),
+                                                Messages.text("tracks", result.tracks()),
+                                                Messages.text("users", result.users()),
+                                                Messages.text("skipped", result.skipped())),
+                        plugin.mainThread())
+                .exceptionally(
+                        t -> {
+                            msg().send(
+                                            s,
+                                            "migration.failed",
+                                            Messages.text("error", rootMessage(t)));
+                            return null;
+                        });
     }
 
     private static String rootMessage(Throwable t) {

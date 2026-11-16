@@ -1,11 +1,14 @@
 package xyz.rexos.rexperms.api;
 
 import org.bukkit.entity.Player;
+
 import xyz.rexos.rexperms.RexPermsPlugin;
+import xyz.rexos.rexperms.api.event.PreHolderMutationEvent;
 import xyz.rexos.rexperms.calc.MetaData;
 import xyz.rexos.rexperms.inject.PermissibleInjector;
 import xyz.rexos.rexperms.inject.RexPermissible;
 import xyz.rexos.rexperms.model.ContextSet;
+import xyz.rexos.rexperms.model.DataEpoch;
 import xyz.rexos.rexperms.model.Group;
 import xyz.rexos.rexperms.model.Node;
 import xyz.rexos.rexperms.model.User;
@@ -26,6 +29,12 @@ public final class RexPermsApiImpl implements RexPermsApi {
     }
 
     @Override
+    public void registerAuthorizationPolicy(
+            org.bukkit.plugin.Plugin owner, AuthorizationPolicy policy) {
+        plugin.registerPolicy(owner, policy);
+    }
+
+    @Override
     public User getLoadedUser(UUID uuid) {
         return plugin.getUserManager().get(uuid);
     }
@@ -35,13 +44,47 @@ public final class RexPermsApiImpl implements RexPermsApi {
         return plugin.getService().loadUser(uuid, null);
     }
 
+    /** API writes use a detached working copy; cancellation cannot leak live mutations. */
     @Override
     public CompletableFuture<Void> modifyUser(UUID uuid, final Consumer<User> action) {
-        return loadUser(uuid).thenComposeAsync(user -> {
-            action.accept(user);
-            plugin.getService().ensureDefaultGroup(user);
-            return plugin.getService().commit(user, null, "API change");
-        }, plugin.mainThread());
+        return modifyUserInternal(uuid, null, action);
+    }
+
+    @Override
+    public CompletableFuture<Void> modifyUserAs(UUID uuid, Player actor, Consumer<User> action) {
+        if (actor == null) throw new IllegalArgumentException("actor cannot be null");
+        return modifyUserInternal(uuid, actor, action);
+    }
+
+    private CompletableFuture<Void> modifyUserInternal(
+            UUID uuid, final Player actor, final Consumer<User> action) {
+        return loadUser(uuid)
+                .thenComposeAsync(
+                        user -> {
+                            User draft =
+                                    new User(
+                                            user.getUniqueId(),
+                                            user.getUsername(),
+                                            new DataEpoch());
+                            draft.replaceNodes(user.getNodes());
+                            draft.setPrimaryGroup(user.getPrimaryGroup());
+                            action.accept(draft);
+                            plugin.getService().ensureDefaultGroup(draft);
+                            return plugin.mutate(
+                                    new xyz.rexos.rexperms.api.mutation.MutationContext(
+                                            actor == null
+                                                    ? PreHolderMutationEvent.Origin.API
+                                                    : PreHolderMutationEvent.Origin.PLAYER,
+                                            actor == null ? null : actor.getUniqueId().toString(),
+                                            "API_USER"),
+                                    () -> {
+                                        user.replaceNodes(draft.getNodes());
+                                        user.setPrimaryGroup(draft.getPrimaryGroup());
+                                        plugin.getService().ensureDefaultGroup(user);
+                                        return plugin.getService().commit(user, null, "API change");
+                                    });
+                        },
+                        plugin.mainThread());
     }
 
     @Override
@@ -56,8 +99,39 @@ public final class RexPermsApiImpl implements RexPermsApi {
 
     @Override
     public CompletableFuture<Void> modifyGroup(Group group, Consumer<Group> action) {
-        action.accept(group);
-        return plugin.getService().commit(group, null, "API change");
+        if (group == null || plugin.getGroupManager().get(group.getName()) != group)
+            throw new IllegalArgumentException("Expected a managed group");
+        CompletableFuture<Void> result = new CompletableFuture<Void>();
+        plugin.mainThread()
+                .execute(
+                        () -> {
+                            try {
+                                Group draft = new Group(group.getName(), new DataEpoch());
+                                draft.replaceNodes(group.getNodes());
+                                action.accept(draft);
+                                plugin.mutate(
+                                        new xyz.rexos.rexperms.api.mutation.MutationContext(
+                                                PreHolderMutationEvent.Origin.API,
+                                                null,
+                                                "API_GROUP"),
+                                        () -> {
+                                            group.replaceNodes(draft.getNodes());
+                                            plugin.getService()
+                                                    .commit(group, null, "API change")
+                                                    .whenComplete(
+                                                            (v, err) -> {
+                                                                if (err != null)
+                                                                    result.completeExceptionally(
+                                                                            err);
+                                                                else result.complete(null);
+                                                            });
+                                            return null;
+                                        });
+                            } catch (Throwable t) {
+                                result.completeExceptionally(t);
+                            }
+                        });
+        return result;
     }
 
     @Override

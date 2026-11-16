@@ -5,9 +5,11 @@ import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver;
+
 import org.bukkit.command.CommandSender;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.plugin.java.JavaPlugin;
+
 import xyz.rexos.rexperms.util.Text;
 
 import java.io.File;
@@ -19,12 +21,11 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 /**
- * messages.yml handler. Every message is MiniMessage formatted.
- * Keys missing from the user's file are taken from the jar's default and
- * written back, so updates never lose new messages.
+ * messages.yml handler. Every message is MiniMessage formatted. Keys missing from the user's file
+ * are taken from the jar's default and written back, so updates never lose new messages.
  *
- * Messages are sent through adventure-platform, which renders hover/click
- * components and RGB colours on 1.16+, and downsamples gracefully on 1.8–1.15.
+ * <p>Messages are sent through adventure-platform, which renders hover/click components and RGB
+ * colours on 1.16+, and downsamples gracefully on 1.8–1.15.
  */
 public final class Messages {
 
@@ -77,10 +78,14 @@ public final class Messages {
         prefix = yaml.getString("prefix", "");
     }
 
-    /** Reads as UTF-8 regardless of the platform charset (old servers default to the system one). */
+    /**
+     * Reads as UTF-8 regardless of the platform charset (old servers default to the system one).
+     */
     private YamlConfiguration loadUtf8(File file) {
         try {
-            Reader reader = new InputStreamReader(new java.io.FileInputStream(file), StandardCharsets.UTF_8);
+            Reader reader =
+                    new InputStreamReader(
+                            new java.io.FileInputStream(file), StandardCharsets.UTF_8);
             try {
                 return YamlConfiguration.loadConfiguration(reader);
             } finally {
@@ -136,6 +141,14 @@ public final class Messages {
     }
 
     public void send(CommandSender to, Component component) {
+        if (plugin instanceof xyz.rexos.rexperms.RexPermsPlugin)
+            ((xyz.rexos.rexperms.RexPermsPlugin) plugin)
+                    .mutations()
+                    .afterCommit(() -> deliver(to, component));
+        else deliver(to, component);
+    }
+
+    private void deliver(CommandSender to, Component component) {
         if (audiences != null) {
             audiences.sender(to).sendMessage(component);
         } else {

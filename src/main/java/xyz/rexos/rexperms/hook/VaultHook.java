@@ -2,18 +2,21 @@ package xyz.rexos.rexperms.hook;
 
 import net.milkbowl.vault.chat.Chat;
 import net.milkbowl.vault.permission.Permission;
+
 import org.bukkit.Bukkit;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.ServicePriority;
 import org.bukkit.plugin.ServicesManager;
+
 import xyz.rexos.rexperms.RexPermsPlugin;
+import xyz.rexos.rexperms.api.event.PreHolderMutationEvent;
 import xyz.rexos.rexperms.calc.MetaData;
 import xyz.rexos.rexperms.calc.Tristate;
 import xyz.rexos.rexperms.inject.PermissibleInjector;
 import xyz.rexos.rexperms.inject.RexPermissible;
 import xyz.rexos.rexperms.model.ContextSet;
-import xyz.rexos.rexperms.model.DataMutateResult;
+import xyz.rexos.rexperms.model.DataEpoch;
 import xyz.rexos.rexperms.model.Group;
 import xyz.rexos.rexperms.model.Node;
 import xyz.rexos.rexperms.model.NodeType;
@@ -27,15 +30,14 @@ import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 
 /**
- * Vault bridge. Most economy, shop and chat plugins read permissions and
- * prefixes through Vault, so this matters.
+ * Vault bridge. Most economy, shop and chat plugins read permissions and prefixes through Vault, so
+ * this matters.
  *
  * <ul>
- *   <li>For queries the world argument is used as a context.</li>
- *   <li>For changes (playerAdd, playerAddGroup...) the world argument is ignored
- *       and nodes are added globally. Shop plugins usually pass the player's
- *       current world, which would otherwise make a bought rank work in that
- *       world only.</li>
+ *   <li>For queries the world argument is used as a context.
+ *   <li>For changes (playerAdd, playerAddGroup...) the world argument is ignored and nodes are
+ *       added globally. Shop plugins usually pass the player's current world, which would otherwise
+ *       make a bought rank work in that world only.
  * </ul>
  */
 public final class VaultHook {
@@ -70,7 +72,9 @@ public final class VaultHook {
         if (loaded != null) return loaded;
         if (plugin.getStorage() == null) return null;
         try {
-            return plugin.getService().loadUser(player.getUniqueId(), player.getName()).get(5, TimeUnit.SECONDS);
+            return plugin.getService()
+                    .loadUser(player.getUniqueId(), player.getName())
+                    .get(5, TimeUnit.SECONDS);
         } catch (Exception e) {
             plugin.getLogger().log(Level.WARNING, "Vault: could not load " + player.getName(), e);
             return null;
@@ -111,16 +115,61 @@ public final class VaultHook {
         if (p != null && (world == null || world.equalsIgnoreCase(p.getWorld().getName()))) {
             return p.hasPermission(perm); // includes defaults and attachments
         }
-        return user.getCachedData().permissions(queryContext(world, user), plugin.getCalculator())
-                .check(perm) == Tristate.TRUE;
+        return user.getCachedData()
+                        .permissions(queryContext(world, user), plugin.getCalculator())
+                        .check(perm)
+                == Tristate.TRUE;
+    }
+
+    /** Vault has no trustworthy initiating player identity. Never attribute it to console. */
+    private boolean vaultChange(
+            PermissionHolder holder,
+            java.util.function.Consumer<PermissionHolder> change,
+            String description) {
+        if (holder == null || !Bukkit.isPrimaryThread()) return false;
+        PermissionHolder draft;
+        if (holder instanceof User) {
+            User u = (User) holder;
+            User copy = new User(u.getUniqueId(), u.getUsername(), new DataEpoch());
+            copy.replaceNodes(u.getNodes());
+            copy.setPrimaryGroup(u.getPrimaryGroup());
+            draft = copy;
+        } else {
+            draft = new Group(((Group) holder).getName(), new DataEpoch());
+            draft.replaceNodes(holder.getNodes());
+        }
+        change.accept(draft);
+        if (draft instanceof User) plugin.getService().ensureDefaultGroup((User) draft);
+        String oldPrimary = holder instanceof User ? ((User) holder).getPrimaryGroup() : null;
+        String newPrimary = draft instanceof User ? ((User) draft).getPrimaryGroup() : null;
+        if (holder.getNodes().equals(draft.getNodes())
+                && java.util.Objects.equals(oldPrimary, newPrimary)) return false;
+        try {
+            return plugin.mutate(
+                    new xyz.rexos.rexperms.api.mutation.MutationContext(
+                            PreHolderMutationEvent.Origin.VAULT, null, "VAULT"),
+                    () -> {
+                        holder.replaceNodes(draft.getNodes());
+                        if (holder instanceof User) {
+                            ((User) holder).setPrimaryGroup(newPrimary);
+                            plugin.getService().ensureDefaultGroup((User) holder);
+                        }
+                        plugin.getService().commit(holder, null, "vault: " + description);
+                        return true;
+                    });
+        } catch (SecurityException denied) {
+            return false;
+        }
     }
 
     private boolean mutate(PermissionHolder holder, Node node, boolean add, String description) {
-        if (holder == null) return false;
-        DataMutateResult r = add ? holder.setNode(node) : holder.unsetNode(node);
-        if (!r.wasSuccessful()) return false;
-        plugin.getService().commit(holder, null, "vault: " + description);
-        return true;
+        return vaultChange(
+                holder,
+                draft -> {
+                    if (add) draft.setNode(node);
+                    else draft.unsetNode(node);
+                },
+                description);
     }
 
     private MetaData meta(User user, String world) {
@@ -146,56 +195,85 @@ public final class VaultHook {
     private boolean addGroup(User u, String group) {
         Group g = plugin.getGroupManager().get(group);
         if (u == null || g == null) return false;
-        return mutate(u, Node.inheritance(g.getName(), ContextSet.EMPTY), true, "parent add " + g.getName());
+        return mutate(
+                u,
+                Node.inheritance(g.getName(), ContextSet.EMPTY),
+                true,
+                "parent add " + g.getName());
     }
 
     private boolean removeGroup(User u, String group) {
         if (u == null || group == null) return false;
         String g = group.toLowerCase(Locale.ROOT);
-        if (!u.unsetNode(Node.inheritance(g, ContextSet.EMPTY)).wasSuccessful()) return false;
-        plugin.getService().ensureDefaultGroup(u);
-        if (g.equals(u.getPrimaryGroup())) {
-            u.setPrimaryGroup(plugin.getCalculator().primaryGroup(u, ContextSet.EMPTY, System.currentTimeMillis() / 1000L));
-        }
-        plugin.getService().commit(u, null, "vault: parent remove " + g);
-        return true;
+        return vaultChange(
+                u,
+                draft -> {
+                    draft.unsetNode(Node.inheritance(g, ContextSet.EMPTY));
+                    if (g.equals(((User) draft).getPrimaryGroup())) {
+                        ((User) draft).setPrimaryGroup("default");
+                    }
+                },
+                "parent remove " + g);
     }
 
     private String[] groupsOf(User u, String world) {
         if (u == null) return new String[0];
         List<String> out = new ArrayList<String>();
         long now = System.currentTimeMillis() / 1000L;
-        for (Group g : plugin.getCalculator().directParents(u, queryContext(world, u), now)) out.add(g.getName());
+        for (Group g : plugin.getCalculator().directParents(u, queryContext(world, u), now))
+            out.add(g.getName());
         return out.toArray(new String[0]);
     }
 
     /**
-     * Vault has no priority concept: replace the holder's own permanent global
-     * prefix, or add one with a sufficiently high priority.
+     * Vault has no priority concept: replace the holder's own permanent global prefix, or add one
+     * with a sufficiently high priority.
      */
     private void setChat(PermissionHolder holder, final NodeType type, String value) {
         if (holder == null) return;
-        int priority = holder instanceof Group ? Math.max(1, ((Group) holder).getWeight()) : 1000;
-        for (Node n : holder.getNodes(type)) {
-            if (!n.isTemporary() && n.contexts().isEmpty()) priority = Math.max(priority, n.chatPriority());
-        }
-        holder.removeIf(n -> n.type() == type && !n.isTemporary() && n.contexts().isEmpty());
-        if (value != null && !value.isEmpty()) {
-            String prefix = type == NodeType.PREFIX ? "prefix." : "suffix.";
-            holder.setNode(Node.of(prefix + priority + "." + value, true, 0L, ContextSet.EMPTY));
-        }
-        plugin.getService().commit(holder, null, "vault: " + (type == NodeType.PREFIX ? "setprefix" : "setsuffix")
-                + " \"" + value + "\"");
+        vaultChange(
+                holder,
+                draft -> {
+                    int priority =
+                            draft instanceof Group
+                                    ? Math.max(1, ((Group) draft).getWeight())
+                                    : 1000;
+                    for (Node n : draft.getNodes(type)) {
+                        if (!n.isTemporary() && n.contexts().isEmpty())
+                            priority = Math.max(priority, n.chatPriority());
+                    }
+                    draft.removeIf(
+                            n -> n.type() == type && !n.isTemporary() && n.contexts().isEmpty());
+                    if (value != null && !value.isEmpty()) {
+                        String prefix = type == NodeType.PREFIX ? "prefix." : "suffix.";
+                        draft.setNode(
+                                Node.of(
+                                        prefix + priority + "." + value,
+                                        true,
+                                        0L,
+                                        ContextSet.EMPTY));
+                    }
+                },
+                type == NodeType.PREFIX ? "setprefix" : "setsuffix");
     }
 
     private void setMeta(PermissionHolder holder, String key, Object value) {
         if (holder == null || key == null) return;
         final String k = key.toLowerCase(Locale.ROOT);
         if (k.contains(".")) return;
-        holder.removeIf(n -> n.type() == NodeType.META && n.metaKey().equals(k)
-                && !n.isTemporary() && n.contexts().isEmpty());
-        if (value != null) holder.setNode(Node.meta(k, String.valueOf(value), ContextSet.EMPTY));
-        plugin.getService().commit(holder, null, "vault: meta set " + k + " " + value);
+        vaultChange(
+                holder,
+                draft -> {
+                    draft.removeIf(
+                            n ->
+                                    n.type() == NodeType.META
+                                            && n.metaKey().equals(k)
+                                            && !n.isTemporary()
+                                            && n.contexts().isEmpty());
+                    if (value != null)
+                        draft.setNode(Node.meta(k, String.valueOf(value), ContextSet.EMPTY));
+                },
+                "meta set " + k);
     }
 
     private String playerMeta(User u, String world, String key) {
@@ -247,22 +325,38 @@ public final class VaultHook {
 
         @Override
         public boolean playerAdd(String world, String player, String perm) {
-            return mutate(user(player), Node.permission(perm, true, ContextSet.EMPTY), true, "permission set " + perm);
+            return mutate(
+                    user(player),
+                    Node.permission(perm, true, ContextSet.EMPTY),
+                    true,
+                    "permission set " + perm);
         }
 
         @Override
         public boolean playerAdd(String world, OfflinePlayer player, String perm) {
-            return mutate(user(player), Node.permission(perm, true, ContextSet.EMPTY), true, "permission set " + perm);
+            return mutate(
+                    user(player),
+                    Node.permission(perm, true, ContextSet.EMPTY),
+                    true,
+                    "permission set " + perm);
         }
 
         @Override
         public boolean playerRemove(String world, String player, String perm) {
-            return mutate(user(player), Node.permission(perm, true, ContextSet.EMPTY), false, "permission unset " + perm);
+            return mutate(
+                    user(player),
+                    Node.permission(perm, true, ContextSet.EMPTY),
+                    false,
+                    "permission unset " + perm);
         }
 
         @Override
         public boolean playerRemove(String world, OfflinePlayer player, String perm) {
-            return mutate(user(player), Node.permission(perm, true, ContextSet.EMPTY), false, "permission unset " + perm);
+            return mutate(
+                    user(player),
+                    Node.permission(perm, true, ContextSet.EMPTY),
+                    false,
+                    "permission unset " + perm);
         }
 
         @Override
@@ -271,19 +365,26 @@ public final class VaultHook {
             if (g == null) return false;
             ContextSet ctx = VaultHook.this.plugin.getContextManager().staticContext();
             if (world != null) ctx = ctx.with("world", world);
-            return VaultHook.this.plugin.getCalculator().calculatePermissions(g, ctx).check(perm) == Tristate.TRUE;
+            return VaultHook.this.plugin.getCalculator().calculatePermissions(g, ctx).check(perm)
+                    == Tristate.TRUE;
         }
 
         @Override
         public boolean groupAdd(String world, String group, String perm) {
-            return mutate(VaultHook.this.plugin.getGroupManager().get(group),
-                    Node.permission(perm, true, ContextSet.EMPTY), true, "permission set " + perm);
+            return mutate(
+                    VaultHook.this.plugin.getGroupManager().get(group),
+                    Node.permission(perm, true, ContextSet.EMPTY),
+                    true,
+                    "permission set " + perm);
         }
 
         @Override
         public boolean groupRemove(String world, String group, String perm) {
-            return mutate(VaultHook.this.plugin.getGroupManager().get(group),
-                    Node.permission(perm, true, ContextSet.EMPTY), false, "permission unset " + perm);
+            return mutate(
+                    VaultHook.this.plugin.getGroupManager().get(group),
+                    Node.permission(perm, true, ContextSet.EMPTY),
+                    false,
+                    "permission unset " + perm);
         }
 
         @Override
