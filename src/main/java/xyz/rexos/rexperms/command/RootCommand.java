@@ -7,7 +7,9 @@ import org.bukkit.command.CommandSender;
 import org.bukkit.command.ConsoleCommandSender;
 import org.bukkit.command.TabExecutor;
 import org.bukkit.entity.Player;
+
 import xyz.rexos.rexperms.RexPermsPlugin;
+import xyz.rexos.rexperms.api.event.PreAdministrativeCommandEvent;
 import xyz.rexos.rexperms.config.Messages;
 import xyz.rexos.rexperms.model.ContextSet;
 import xyz.rexos.rexperms.model.Track;
@@ -23,16 +25,35 @@ import java.util.Locale;
 /** /rexperms (/rp) entry point and tab completion. */
 public final class RootCommand implements TabExecutor {
 
-    private static final List<String> ROOT_SUBS = Collections.unmodifiableList(Arrays.asList(
-            "help", "info", "user", "group", "track", "creategroup", "deletegroup", "listgroups",
-            "createtrack", "deletetrack", "listtracks", "search", "check", "verbose", "log", "sync",
-            "reload", "export", "import"));
+    private static final List<String> ROOT_SUBS =
+            Collections.unmodifiableList(
+                    Arrays.asList(
+                            "help",
+                            "info",
+                            "user",
+                            "group",
+                            "track",
+                            "creategroup",
+                            "deletegroup",
+                            "listgroups",
+                            "createtrack",
+                            "deletetrack",
+                            "listtracks",
+                            "search",
+                            "check",
+                            "verbose",
+                            "log",
+                            "sync",
+                            "reload",
+                            "export",
+                            "import"));
 
-    private static final List<String> DURATIONS = Collections.unmodifiableList(Arrays.asList(
-            "30m", "1h", "12h", "1d", "3d", "7d", "14d", "30d", "90d", "1y"));
+    private static final List<String> DURATIONS =
+            Collections.unmodifiableList(
+                    Arrays.asList("30m", "1h", "12h", "1d", "3d", "7d", "14d", "30d", "90d", "1y"));
 
-    private static final List<String> MERGE = Collections.unmodifiableList(Arrays.asList(
-            "accumulate", "replace", "deny"));
+    private static final List<String> MERGE =
+            Collections.unmodifiableList(Arrays.asList("accumulate", "replace", "deny"));
 
     private final RexPermsPlugin plugin;
     private final UserCommand userCommand;
@@ -50,10 +71,30 @@ public final class RootCommand implements TabExecutor {
     }
 
     @Override
-    public boolean onCommand(CommandSender sender, Command command, String label, String[] rawArgs) {
+    public boolean onCommand(
+            CommandSender sender, Command command, String label, String[] rawArgs) {
+        try {
+            return plugin.mutate(
+                    xyz.rexos.rexperms.api.mutation.MutationContext.sender(sender, "COMMAND"),
+                    () -> executeAuthorized(sender, command, label, rawArgs));
+        } catch (SecurityException denied) {
+            sender.sendMessage("§cAlteração negada pela política de autorização.");
+            return true;
+        }
+    }
+
+    private boolean executeAuthorized(
+            CommandSender sender, Command command, String label, String[] rawArgs) {
         // Players with no RexPerms permission at all do not even learn the sub-commands
         if (!(sender instanceof ConsoleCommandSender) && !hasAnyAccess(sender)) {
             plugin.getMessages().send(sender, "general.no-access");
+            return true;
+        }
+        PreAdministrativeCommandEvent authorization =
+                new PreAdministrativeCommandEvent(sender, rawArgs);
+        Bukkit.getPluginManager().callEvent(authorization);
+        if (authorization.isCancelled()) {
+            sender.sendMessage("§cRexPerms: operation denied by an authorization policy.");
             return true;
         }
         Args args = Args.parse(rawArgs);
@@ -90,12 +131,18 @@ public final class RootCommand implements TabExecutor {
         } else if (sub.equals("check")) {
             // /rp check <player> <permission>  ==  /rp user <player> permission check <permission>
             if (rest.size() < 2) {
-                plugin.getMessages().send(sender, "general.usage",
-                        Messages.text("usage", "/" + label + " check <player> <permission>"));
+                plugin.getMessages()
+                        .send(
+                                sender,
+                                "general.usage",
+                                Messages.text(
+                                        "usage", "/" + label + " check <player> <permission>"));
                 return true;
             }
-            userCommand.execute(sender, label,
-                    Args.parse(new String[]{rest.get(0), "permission", "check", rest.get(1)}));
+            userCommand.execute(
+                    sender,
+                    label,
+                    Args.parse(new String[] {rest.get(0), "permission", "check", rest.get(1)}));
         } else if (sub.equals("verbose")) {
             misc.verbose(sender, label, rest);
         } else if (sub.equals("log")) {
@@ -109,7 +156,8 @@ public final class RootCommand implements TabExecutor {
         } else if (sub.equals("import")) {
             misc.importData(sender, label, rest);
         } else {
-            plugin.getMessages().send(sender, "general.unknown-command", Messages.text("label", label));
+            plugin.getMessages()
+                    .send(sender, "general.unknown-command", Messages.text("label", label));
         }
         return true;
     }
@@ -120,7 +168,8 @@ public final class RootCommand implements TabExecutor {
             if (sender.hasPermission("rexperms." + sub)) return true;
         }
         for (String area : Arrays.asList("user", "group", "track")) {
-            if (sender.hasPermission("rexperms." + area + ".*") || sender.hasPermission("rexperms." + area + ".info")) {
+            if (sender.hasPermission("rexperms." + area + ".*")
+                    || sender.hasPermission("rexperms." + area + ".info")) {
                 return true;
             }
         }
@@ -130,8 +179,10 @@ public final class RootCommand implements TabExecutor {
     // ================================================================== tab completion
 
     @Override
-    public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
-        if (!(sender instanceof ConsoleCommandSender) && !hasAnyAccess(sender)) return Collections.emptyList();
+    public List<String> onTabComplete(
+            CommandSender sender, Command command, String alias, String[] args) {
+        if (!(sender instanceof ConsoleCommandSender) && !hasAnyAccess(sender))
+            return Collections.emptyList();
         String last = args.length == 0 ? "" : args[args.length - 1];
         return filter(suggestions(args), last);
     }
@@ -169,15 +220,19 @@ public final class RootCommand implements TabExecutor {
             }
             return Collections.emptyList();
         }
-        if (root.equals("deletegroup")) return n == 2 ? plugin.getGroupManager().names() : Collections.<String>emptyList();
-        if (root.equals("createtrack")) return n >= 3 ? plugin.getGroupManager().names() : Collections.<String>emptyList();
-        if (root.equals("deletetrack")) return n == 2 ? plugin.getTrackManager().names() : Collections.<String>emptyList();
+        if (root.equals("deletegroup"))
+            return n == 2 ? plugin.getGroupManager().names() : Collections.<String>emptyList();
+        if (root.equals("createtrack"))
+            return n >= 3 ? plugin.getGroupManager().names() : Collections.<String>emptyList();
+        if (root.equals("deletetrack"))
+            return n == 2 ? plugin.getTrackManager().names() : Collections.<String>emptyList();
         if (root.equals("check")) {
             if (n == 2) return onlineNames();
             if (n == 3) return HolderCommands.knownPermissions(a[2]);
             return Collections.emptyList();
         }
-        if (root.equals("search")) return n == 2 ? HolderCommands.knownPermissions(a[1]) : Collections.<String>emptyList();
+        if (root.equals("search"))
+            return n == 2 ? HolderCommands.knownPermissions(a[1]) : Collections.<String>emptyList();
         if (root.equals("verbose")) {
             if (n == 2) return Arrays.asList("on", "off");
             if (n == 3) return onlineNames();
@@ -204,27 +259,33 @@ public final class RootCommand implements TabExecutor {
 
         if (area.equals("permission") || area.equals("perm") || area.equals("permissions")) {
             if (pos == 1) return HolderCommands.PERMISSION_SUBS;
-            if (pos == 2 && !sub.equals("info") && !sub.equals("clear")) return HolderCommands.knownPermissions(current);
-            if (pos == 3 && (sub.equals("set") || sub.equals("settemp"))) return Arrays.asList("true", "false");
+            if (pos == 2 && !sub.equals("info") && !sub.equals("clear"))
+                return HolderCommands.knownPermissions(current);
+            if (pos == 3 && (sub.equals("set") || sub.equals("settemp")))
+                return Arrays.asList("true", "false");
             if (pos == 4 && sub.equals("settemp")) return DURATIONS;
             if (pos == 5 && sub.equals("settemp")) return MERGE;
             return contextSuggestions(current);
         }
         if (area.equals("parent") || area.equals("parents")) {
             if (pos == 1) return HolderCommands.PARENT_SUBS;
-            if (pos == 2 && !sub.equals("info") && !sub.equals("clear")) return plugin.getGroupManager().names();
+            if (pos == 2 && !sub.equals("info") && !sub.equals("clear"))
+                return plugin.getGroupManager().names();
             if (pos == 3 && sub.equals("addtemp")) return DURATIONS;
             if (pos == 4 && sub.equals("addtemp")) return MERGE;
             return contextSuggestions(current);
         }
         if (area.equals("meta") || area.equals("chat")) {
             if (pos == 1) return HolderCommands.META_SUBS;
-            if (pos == 2 && (sub.contains("prefix") || sub.contains("suffix"))) return Arrays.asList("100", "50", "10");
+            if (pos == 2 && (sub.contains("prefix") || sub.contains("suffix")))
+                return Arrays.asList("100", "50", "10");
             if (pos == 4 && sub.startsWith("addtemp")) return DURATIONS;
             return contextSuggestions(current);
         }
         if (area.equals("setweight")) {
-            return pos == 1 ? Arrays.asList("10", "50", "100", "500", "1000") : Collections.<String>emptyList();
+            return pos == 1
+                    ? Arrays.asList("10", "50", "100", "500", "1000")
+                    : Collections.<String>emptyList();
         }
         return Collections.emptyList();
     }
@@ -238,14 +299,17 @@ public final class RootCommand implements TabExecutor {
         }
         String key = current.substring(0, eq).toLowerCase(Locale.ROOT);
         if (key.equals("world")) {
-            for (World w : Bukkit.getWorlds()) out.add("world=" + w.getName().toLowerCase(Locale.ROOT));
+            for (World w : Bukkit.getWorlds())
+                out.add("world=" + w.getName().toLowerCase(Locale.ROOT));
         } else if (key.equals("server")) {
             ContextSet st = plugin.getContextManager().staticContext();
             out.add("server=" + (st.get("server") != null ? st.get("server") : "lobby"));
         } else if (key.equals("gamemode")) {
-            for (String g : Arrays.asList("survival", "creative", "adventure", "spectator")) out.add("gamemode=" + g);
+            for (String g : Arrays.asList("survival", "creative", "adventure", "spectator"))
+                out.add("gamemode=" + g);
         } else if (key.equals("dimension")) {
-            for (String d : Arrays.asList("overworld", "the_nether", "the_end")) out.add("dimension=" + d);
+            for (String d : Arrays.asList("overworld", "the_nether", "the_end"))
+                out.add("dimension=" + d);
         }
         return out;
     }
@@ -261,7 +325,8 @@ public final class RootCommand implements TabExecutor {
         File[] files = plugin.getDataFolder().listFiles();
         if (files != null) {
             for (File f : files) {
-                if (f.getName().endsWith(".json.gz") || f.getName().endsWith(".json")) out.add(f.getName());
+                if (f.getName().endsWith(".json.gz") || f.getName().endsWith(".json"))
+                    out.add(f.getName());
             }
         }
         return out;

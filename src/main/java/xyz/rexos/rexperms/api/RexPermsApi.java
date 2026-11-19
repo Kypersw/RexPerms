@@ -1,6 +1,7 @@
 package xyz.rexos.rexperms.api;
 
 import org.bukkit.entity.Player;
+
 import xyz.rexos.rexperms.model.ContextSet;
 import xyz.rexos.rexperms.model.Group;
 import xyz.rexos.rexperms.model.Node;
@@ -28,6 +29,12 @@ import java.util.function.Consumer;
  * }</pre>
  */
 public interface RexPermsApi {
+    default int authorizationApiVersion() {
+        return 2;
+    }
+
+    /** Policy remains required until RexPerms restarts; disabling its owner fails closed. */
+    void registerAuthorizationPolicy(org.bukkit.plugin.Plugin owner, AuthorizationPolicy policy);
 
     /** Data of a loaded (online) user, or null. */
     User getLoadedUser(UUID uuid);
@@ -36,10 +43,16 @@ public interface RexPermsApi {
     CompletableFuture<User> loadUser(UUID uuid);
 
     /**
-     * Loads the user, applies the change, saves it and publishes it to the
-     * network. The action runs on the main thread.
+     * Loads the user, applies the change, saves it and publishes it to the network. The action runs
+     * on the main thread.
      */
     CompletableFuture<Void> modifyUser(UUID uuid, Consumer<User> action);
+
+    /**
+     * Applies a player-attributed mutation. The authorization listener may reject it. This is
+     * intended for administrative UIs, not for bypassing the server's policy.
+     */
+    CompletableFuture<Void> modifyUserAs(UUID uuid, Player actor, Consumer<User> action);
 
     Group getGroup(String name);
 

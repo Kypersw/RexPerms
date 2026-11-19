@@ -1,180 +1,172 @@
 package xyz.rexos.rexperms.model;
 
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.Iterator;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Set;
+import xyz.rexos.rexperms.api.mutation.*;
 
-/**
- * Common base for everything that carries nodes (users and groups).
- * All mutators are thread-safe.
- */
+import java.util.*;
+
+/** Managed holders stage every public mutator through the authorization coordinator. */
 public abstract class PermissionHolder {
-
-    /** Simple predicate to stay independent of java.util.function in hot paths. */
     public interface NodeFilter {
         boolean test(Node node);
     }
 
-    private final Set<Node> nodes = new LinkedHashSet<Node>();
     protected final DataEpoch epoch;
+    private MutationCoordinator.Cell<HolderSnapshot> state;
 
     protected PermissionHolder(DataEpoch epoch) {
         this.epoch = epoch;
     }
 
-    /** Storage identifier (UUID string or group name). */
-    public abstract String getIdentifier();
+    protected final void initialize(HolderSnapshot initial) {
+        if (state != null) throw new IllegalStateException("Already initialized");
+        state =
+                new MutationCoordinator.Cell<HolderSnapshot>(
+                        epoch.coordinator(),
+                        getType().name(),
+                        getIdentifier(),
+                        initial,
+                        epoch::bump);
+    }
 
-    /** Name shown in messages. */
-    public abstract String getFriendlyName();
-
-    public abstract HolderType getType();
+    private synchronized MutationCoordinator.Cell<HolderSnapshot> cell() {
+        if (state == null)
+            state =
+                    new MutationCoordinator.Cell<HolderSnapshot>(
+                            epoch.coordinator(),
+                            getType().name(),
+                            getIdentifier(),
+                            new HolderSnapshot(
+                                    Collections.<Node>emptyList(),
+                                    this instanceof User ? "default" : null),
+                            epoch::bump);
+        return state;
+    }
 
     public final DataEpoch getEpoch() {
         return epoch;
     }
 
-    // ------------------------------------------------------------------ reading
+    public abstract String getIdentifier();
 
-    public synchronized List<Node> getNodes() {
-        return Collections.unmodifiableList(new ArrayList<Node>(nodes));
+    public abstract String getFriendlyName();
+
+    public abstract HolderType getType();
+
+    public List<Node> getNodes() {
+        return cell().get().nodes;
     }
 
-    public synchronized List<Node> getNodes(NodeType type) {
+    public List<Node> getNodes(NodeType type) {
         List<Node> out = new ArrayList<Node>();
-        for (Node n : nodes) {
-            if (n.type() == type) out.add(n);
-        }
+        for (Node n : getNodes()) if (n.type() == type) out.add(n);
         return out;
     }
 
-    /** First node matching the filter, or null. */
-    public synchronized Node findNode(NodeFilter filter) {
-        for (Node n : nodes) {
-            if (filter.test(n)) return n;
-        }
+    public Node findNode(NodeFilter filter) {
+        for (Node n : getNodes()) if (filter.test(n)) return n;
         return null;
     }
 
-    /** Inheritance nodes (direct parents, any context). */
     public List<Node> getParentNodes() {
         return getNodes(NodeType.INHERITANCE);
     }
 
-    // ------------------------------------------------------------------ writing
+    protected String storedPrimaryGroup() {
+        return cell().get().primaryGroup;
+    }
 
-    /** Adds a permanent or temporary node, replacing whatever was in the same slot. */
+    protected void updatePrimaryGroup(String group) {
+        cell().update(s -> s.primary(group));
+    }
+
     public DataMutateResult setNode(Node node) {
         return setNode(node, TemporaryMergeBehaviour.REPLACE);
     }
 
-    public DataMutateResult setNode(Node node, TemporaryMergeBehaviour mergeBehaviour) {
-        synchronized (this) {
-            Node existing = null;
-            for (Node n : nodes) {
-                if (n.sameSlot(node)) {
-                    existing = n;
-                    break;
-                }
-            }
-
-            if (existing != null) {
-                if (!node.isTemporary()) {
-                    if (existing.value() == node.value()) return DataMutateResult.ALREADY_HAS;
-                } else {
-                    switch (mergeBehaviour) {
-                        case FAIL:
-                            return DataMutateResult.TEMP_EXISTS;
-                        case ACCUMULATE: {
-                            long now = System.currentTimeMillis() / 1000L;
-                            long added = node.expiry() - now;
-                            long base = Math.max(existing.expiry(), now);
-                            node = node.withExpiry(base + Math.max(0L, added));
-                            break;
-                        }
-                        case REPLACE:
-                        default:
-                            if (existing.value() == node.value() && existing.expiry() >= node.expiry()) {
-                                return DataMutateResult.ALREADY_HAS;
+    public DataMutateResult setNode(final Node requested, TemporaryMergeBehaviour merge) {
+        Objects.requireNonNull(requested);
+        final DataMutateResult[] result = {DataMutateResult.SUCCESS};
+        cell().update(
+                        s -> {
+                            Node node = requested;
+                            List<Node> next = new ArrayList<Node>(s.nodes);
+                            Node existing = null;
+                            for (Node n : next)
+                                if (n.sameSlot(node)) {
+                                    existing = n;
+                                    break;
+                                }
+                            if (existing != null) {
+                                if (!node.isTemporary()) {
+                                    if (existing.value() == node.value()) {
+                                        result[0] = DataMutateResult.ALREADY_HAS;
+                                        return s;
+                                    }
+                                } else if (merge == TemporaryMergeBehaviour.FAIL) {
+                                    result[0] = DataMutateResult.TEMP_EXISTS;
+                                    return s;
+                                } else if (merge == TemporaryMergeBehaviour.ACCUMULATE) {
+                                    long now = System.currentTimeMillis() / 1000L;
+                                    node =
+                                            node.withExpiry(
+                                                    Math.max(existing.expiry(), now)
+                                                            + Math.max(0L, node.expiry() - now));
+                                } else if (existing.value() == node.value()
+                                        && existing.expiry() >= node.expiry()) {
+                                    result[0] = DataMutateResult.ALREADY_HAS;
+                                    return s;
+                                }
+                                next.remove(existing);
                             }
-                            break;
-                    }
-                }
-                nodes.remove(existing);
-            }
-            nodes.add(node);
-        }
-        epoch.bump();
-        return DataMutateResult.SUCCESS;
+                            next.add(node);
+                            return s.nodes(next);
+                        });
+        return result[0];
     }
 
-    /** Removes the node in the same slot (key + contexts + temporary-ness). */
     public DataMutateResult unsetNode(Node node) {
-        boolean removed = false;
-        synchronized (this) {
-            Iterator<Node> it = nodes.iterator();
-            while (it.hasNext()) {
-                if (it.next().sameSlot(node)) {
-                    it.remove();
-                    removed = true;
-                }
-            }
-        }
-        if (removed) epoch.bump();
-        return removed ? DataMutateResult.SUCCESS : DataMutateResult.LACKS;
+        return removeIf(n -> n.sameSlot(node)) > 0
+                ? DataMutateResult.SUCCESS
+                : DataMutateResult.LACKS;
     }
 
-    /** Removes every node matching the filter; returns how many were removed. */
     public int removeIf(NodeFilter filter) {
-        int count = 0;
-        synchronized (this) {
-            Iterator<Node> it = nodes.iterator();
-            while (it.hasNext()) {
-                if (filter.test(it.next())) {
-                    it.remove();
-                    count++;
-                }
-            }
-        }
-        if (count > 0) epoch.bump();
-        return count;
+        final int[] count = {0};
+        cell().update(
+                        s -> {
+                            List<Node> next = new ArrayList<Node>();
+                            for (Node n : s.nodes) {
+                                if (filter.test(n)) count[0]++;
+                                else next.add(n);
+                            }
+                            return s.nodes(next);
+                        });
+        return count[0];
     }
 
-    /** Removes temporary nodes whose time is up. */
-    public List<Node> removeExpired(long nowSeconds) {
-        List<Node> expired = new ArrayList<Node>();
-        synchronized (this) {
-            Iterator<Node> it = nodes.iterator();
-            while (it.hasNext()) {
-                Node n = it.next();
-                if (n.hasExpired(nowSeconds)) {
-                    expired.add(n);
-                    it.remove();
-                }
-            }
-        }
-        if (!expired.isEmpty()) epoch.bump();
+    public List<Node> removeExpired(long now) {
+        final List<Node> expired = new ArrayList<Node>();
+        removeIf(
+                n -> {
+                    if (n.hasExpired(now)) {
+                        expired.add(n);
+                        return true;
+                    }
+                    return false;
+                });
         return expired;
     }
 
-    /** Replaces all nodes at once (used when loading from storage). */
-    public void replaceNodes(Collection<Node> newNodes) {
-        synchronized (this) {
-            nodes.clear();
-            nodes.addAll(newNodes);
-        }
-        epoch.bump();
+    public void replaceNodes(Collection<Node> nodes) {
+        final Set<Node> copy = new LinkedHashSet<Node>(nodes);
+        cell().update(s -> s.nodes(copy));
     }
 
-    public synchronized boolean hasNodes() {
-        return !nodes.isEmpty();
+    public boolean hasNodes() {
+        return !getNodes().isEmpty();
     }
 
-    public synchronized int nodeCount() {
-        return nodes.size();
+    public int nodeCount() {
+        return getNodes().size();
     }
 }

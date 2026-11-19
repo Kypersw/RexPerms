@@ -1,7 +1,9 @@
 package xyz.rexos.rexperms.command;
 
 import org.bukkit.command.CommandSender;
+
 import xyz.rexos.rexperms.RexPermsPlugin;
+import xyz.rexos.rexperms.api.event.PreAdministrativeOperationEvent;
 import xyz.rexos.rexperms.config.Messages;
 import xyz.rexos.rexperms.model.Group;
 import xyz.rexos.rexperms.model.Track;
@@ -14,8 +16,11 @@ import java.util.List;
 /** /rp track &lt;track&gt; ... */
 final class TrackCommand extends CommandSupport {
 
-    static final List<String> SUBS = Collections.unmodifiableList(Arrays.asList(
-            "info", "append", "insert", "remove", "clear", "rename", "clone", "delete"));
+    static final List<String> SUBS =
+            Collections.unmodifiableList(
+                    Arrays.asList(
+                            "info", "append", "insert", "remove", "clear", "rename", "clone",
+                            "delete"));
 
     TrackCommand(RexPermsPlugin plugin) {
         super(plugin);
@@ -35,10 +40,23 @@ final class TrackCommand extends CommandSupport {
         String sub = a.has(1) ? a.lower(1) : "info";
         Args args = a.from(2);
         if (!allowed(s, "track." + sub)) return;
+        if (!sub.equals("info")
+                && !plugin.getService()
+                        .authorizeLifecycle(
+                                PreAdministrativeOperationEvent.Operation.TRACK_MODIFY,
+                                s,
+                                track.getName(),
+                                args.has(0) ? args.get(0) : null)) {
+            s.sendMessage("§cRexPerms: track operation denied by policy.");
+            return;
+        }
 
         if (sub.equals("info")) {
-            msg().send(s, "track.info-header", Messages.text("track", track.getName()),
-                    Messages.text("count", track.size()));
+            msg().send(
+                            s,
+                            "track.info-header",
+                            Messages.text("track", track.getName()),
+                            Messages.text("count", track.size()));
             List<String> groups = track.getGroups();
             if (groups.isEmpty()) {
                 msg().sendPlain(s, "track.info-empty");
@@ -46,8 +64,16 @@ final class TrackCommand extends CommandSupport {
             }
             for (int i = 0; i < groups.size(); i++) {
                 String g = groups.get(i);
-                msg().sendPlain(s, "track.info-entry", Messages.text("index", i + 1), Messages.text("group", g),
-                        Messages.text("missing", plugin.getGroupManager().exists(g) ? "" : " (group missing!)"));
+                msg().sendPlain(
+                                s,
+                                "track.info-entry",
+                                Messages.text("index", i + 1),
+                                Messages.text("group", g),
+                                Messages.text(
+                                        "missing",
+                                        plugin.getGroupManager().exists(g)
+                                                ? ""
+                                                : " (group missing!)"));
             }
         } else if (sub.equals("append") || sub.equals("insert")) {
             boolean insert = sub.equals("insert");
@@ -72,12 +98,19 @@ final class TrackCommand extends CommandSupport {
                 ok = track.append(group.getName());
             }
             if (!ok) {
-                msg().send(s, "track.already-contains", Messages.text("track", track.getName()),
-                        Messages.text("group", group.getName()));
+                msg().send(
+                                s,
+                                "track.already-contains",
+                                Messages.text("track", track.getName()),
+                                Messages.text("group", group.getName()));
                 return;
             }
-            msg().send(s, "track.group-added", Messages.text("track", track.getName()),
-                    Messages.text("group", group.getName()), Messages.text("path", track.toString()));
+            msg().send(
+                            s,
+                            "track.group-added",
+                            Messages.text("track", track.getName()),
+                            Messages.text("group", group.getName()),
+                            Messages.text("path", track.toString()));
             plugin.getService().commitTrack(track, s, sub + " " + group.getName());
         } else if (sub.equals("remove")) {
             if (!args.has(0)) {
@@ -85,12 +118,19 @@ final class TrackCommand extends CommandSupport {
                 return;
             }
             if (!track.remove(args.get(0))) {
-                msg().send(s, "track.not-contains", Messages.text("track", track.getName()),
-                        Messages.text("group", args.get(0)));
+                msg().send(
+                                s,
+                                "track.not-contains",
+                                Messages.text("track", track.getName()),
+                                Messages.text("group", args.get(0)));
                 return;
             }
-            msg().send(s, "track.group-removed", Messages.text("track", track.getName()),
-                    Messages.text("group", args.lower(0)), Messages.text("path", track.toString()));
+            msg().send(
+                            s,
+                            "track.group-removed",
+                            Messages.text("track", track.getName()),
+                            Messages.text("group", args.lower(0)),
+                            Messages.text("path", track.toString()));
             plugin.getService().commitTrack(track, s, "remove " + args.lower(0));
         } else if (sub.equals("clear")) {
             track.clear();
@@ -113,12 +153,22 @@ final class TrackCommand extends CommandSupport {
             Track copy = plugin.getTrackManager().getOrCreate(newName);
             copy.setGroups(track.getGroups());
             boolean rename = sub.equals("rename");
-            plugin.getService().commitTrack(copy, s, (rename ? "renamed from " : "cloned from ") + track.getName());
+            plugin.getService()
+                    .commitTrack(
+                            copy, s, (rename ? "renamed from " : "cloned from ") + track.getName());
             if (rename) {
                 plugin.getService().deleteTrack(track.getName(), s);
-                msg().send(s, "track.renamed", Messages.text("old", track.getName()), Messages.text("new", newName));
+                msg().send(
+                                s,
+                                "track.renamed",
+                                Messages.text("old", track.getName()),
+                                Messages.text("new", newName));
             } else {
-                msg().send(s, "track.cloned", Messages.text("old", track.getName()), Messages.text("new", newName));
+                msg().send(
+                                s,
+                                "track.cloned",
+                                Messages.text("old", track.getName()),
+                                Messages.text("new", newName));
             }
         } else if (sub.equals("delete")) {
             MiscCommands.deleteTrack(plugin, s, track.getName());

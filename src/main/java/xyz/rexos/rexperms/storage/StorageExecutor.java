@@ -13,8 +13,7 @@ import java.util.logging.Logger;
 /**
  * Runs storage operations off the main thread.
  *
- * YAML uses a single thread to avoid file races; SQL uses several thanks
- * to the connection pool.
+ * <p>YAML uses a single thread to avoid file races; SQL uses several thanks to the connection pool.
  */
 public final class StorageExecutor {
 
@@ -27,21 +26,32 @@ public final class StorageExecutor {
     }
 
     private final Storage storage;
+    private final xyz.rexos.rexperms.api.mutation.MutationCoordinator coordinator;
     private final ExecutorService executor;
     private final Logger logger;
 
     public StorageExecutor(Storage storage, int threads, Logger logger) {
+        this(storage, threads, logger, null);
+    }
+
+    public StorageExecutor(
+            Storage storage,
+            int threads,
+            Logger logger,
+            xyz.rexos.rexperms.api.mutation.MutationCoordinator coordinator) {
+        this.coordinator = coordinator;
         this.storage = storage;
         this.logger = logger;
         final AtomicInteger counter = new AtomicInteger();
-        ThreadFactory factory = new ThreadFactory() {
-            @Override
-            public Thread newThread(Runnable r) {
-                Thread t = new Thread(r, "RexPerms-Storage-" + counter.incrementAndGet());
-                t.setDaemon(true);
-                return t;
-            }
-        };
+        ThreadFactory factory =
+                new ThreadFactory() {
+                    @Override
+                    public Thread newThread(Runnable r) {
+                        Thread t = new Thread(r, "RexPerms-Storage-" + counter.incrementAndGet());
+                        t.setDaemon(true);
+                        return t;
+                    }
+                };
         this.executor = Executors.newFixedThreadPool(Math.max(1, threads), factory);
     }
 
@@ -51,28 +61,45 @@ public final class StorageExecutor {
 
     public <T> CompletableFuture<T> submit(final Task<T> task) {
         final CompletableFuture<T> future = new CompletableFuture<T>();
-        executor.execute(new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    future.complete(task.run(storage));
-                } catch (Throwable e) {
-                    logger.log(Level.SEVERE, "Storage operation failed (" + storage.getName() + ")", e);
-                    future.completeExceptionally(e instanceof CompletionException ? e : new CompletionException(e));
-                }
-            }
-        });
+        Runnable submit =
+                () ->
+                        executor.execute(
+                                new Runnable() {
+                                    @Override
+                                    public void run() {
+                                        try {
+                                            future.complete(task.run(storage));
+                                        } catch (Throwable e) {
+                                            logger.log(
+                                                    Level.SEVERE,
+                                                    "Storage operation failed ("
+                                                            + storage.getName()
+                                                            + ")",
+                                                    e);
+                                            future.completeExceptionally(
+                                                    e instanceof CompletionException
+                                                            ? e
+                                                            : new CompletionException(e));
+                                        }
+                                    }
+                                });
+        if (coordinator == null) submit.run();
+        else {
+            coordinator.onRollback(future::completeExceptionally);
+            coordinator.afterCommit(submit);
+        }
         return future;
     }
 
     public CompletableFuture<Void> run(final VoidTask task) {
-        return submit(new Task<Void>() {
-            @Override
-            public Void run(Storage s) throws Exception {
-                task.run(s);
-                return null;
-            }
-        });
+        return submit(
+                new Task<Void>() {
+                    @Override
+                    public Void run(Storage s) throws Exception {
+                        task.run(s);
+                        return null;
+                    }
+                });
     }
 
     /** Finishes queued work and shuts down (server stop). */
@@ -80,7 +107,9 @@ public final class StorageExecutor {
         executor.shutdown();
         try {
             if (!executor.awaitTermination(15, TimeUnit.SECONDS)) {
-                logger.warning("Some storage operations did not finish within 15 seconds; forcing shutdown.");
+                logger.warning(
+                        "Some storage operations did not finish within 15 seconds; forcing"
+                            + " shutdown.");
                 executor.shutdownNow();
             }
         } catch (InterruptedException e) {

@@ -6,7 +6,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import org.bukkit.Bukkit;
+
 import xyz.rexos.rexperms.RexPermsPlugin;
 import xyz.rexos.rexperms.model.ContextSet;
 import xyz.rexos.rexperms.model.Group;
@@ -42,8 +42,8 @@ import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
 
 /**
- * Export / import. The file format is the same as LuckPerms' {@code /lp export}
- * output, so moving over from LuckPerms takes one command:
+ * Export / import. The file format is the same as LuckPerms' {@code /lp export} output, so moving
+ * over from LuckPerms takes one command:
  *
  * <pre>
  *   1) With LuckPerms installed:   /lp export migration
@@ -102,50 +102,59 @@ public final class MigrationService {
 
     public CompletableFuture<File> export(String name) {
         String fileName = name.endsWith(".json.gz") ? name : name + ".json.gz";
-        final File file = new File(plugin.getDataFolder(), fileName.replace("/", "_").replace("\\", "_"));
+        final File file =
+                new File(plugin.getDataFolder(), fileName.replace("/", "_").replace("\\", "_"));
         // Snapshot groups and tracks on the main thread
         final Map<String, List<Node>> groups = new LinkedHashMap<String, List<Node>>();
         for (Group g : plugin.getGroupManager().sorted()) groups.put(g.getName(), g.getNodes());
         final Map<String, List<String>> tracks = new LinkedHashMap<String, List<String>>();
         for (Track t : plugin.getTrackManager().all()) tracks.put(t.getName(), t.getGroups());
 
-        return plugin.getStorage().submit(storage -> {
-            JsonObject root = new JsonObject();
-            JsonObject meta = new JsonObject();
-            SimpleDateFormat iso = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.ROOT);
-            iso.setTimeZone(TimeZone.getTimeZone("UTC"));
-            meta.addProperty("generatedBy", "RexPerms " + plugin.getDescription().getVersion());
-            meta.addProperty("generatedAt", iso.format(new Date()));
-            root.add("metadata", meta);
+        return plugin.getStorage()
+                .submit(
+                        storage -> {
+                            JsonObject root = new JsonObject();
+                            JsonObject meta = new JsonObject();
+                            SimpleDateFormat iso =
+                                    new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.ROOT);
+                            iso.setTimeZone(TimeZone.getTimeZone("UTC"));
+                            meta.addProperty(
+                                    "generatedBy",
+                                    "RexPerms " + plugin.getDescription().getVersion());
+                            meta.addProperty("generatedAt", iso.format(new Date()));
+                            root.add("metadata", meta);
 
-            JsonObject groupsJson = new JsonObject();
-            for (Map.Entry<String, List<Node>> e : groups.entrySet()) {
-                JsonObject obj = new JsonObject();
-                obj.add("nodes", nodesToJson(e.getValue()));
-                groupsJson.add(e.getKey(), obj);
-            }
-            root.add("groups", groupsJson);
+                            JsonObject groupsJson = new JsonObject();
+                            for (Map.Entry<String, List<Node>> e : groups.entrySet()) {
+                                JsonObject obj = new JsonObject();
+                                obj.add("nodes", nodesToJson(e.getValue()));
+                                groupsJson.add(e.getKey(), obj);
+                            }
+                            root.add("groups", groupsJson);
 
-            JsonObject tracksJson = new JsonObject();
-            for (Map.Entry<String, List<String>> e : tracks.entrySet()) {
-                JsonObject obj = new JsonObject();
-                JsonArray arr = new JsonArray();
-                for (String g : e.getValue()) arr.add(g);
-                obj.add("groups", arr);
-                tracksJson.add(e.getKey(), obj);
-            }
-            root.add("tracks", tracksJson);
+                            JsonObject tracksJson = new JsonObject();
+                            for (Map.Entry<String, List<String>> e : tracks.entrySet()) {
+                                JsonObject obj = new JsonObject();
+                                JsonArray arr = new JsonArray();
+                                for (String g : e.getValue()) arr.add(g);
+                                obj.add("groups", arr);
+                                tracksJson.add(e.getKey(), obj);
+                            }
+                            root.add("tracks", tracksJson);
 
-            root.add("users", exportUsers(storage));
+                            root.add("users", exportUsers(storage));
 
-            Writer w = new OutputStreamWriter(new GZIPOutputStream(new FileOutputStream(file)), StandardCharsets.UTF_8);
-            try {
-                GSON.toJson(root, w);
-            } finally {
-                w.close();
-            }
-            return file;
-        });
+                            Writer w =
+                                    new OutputStreamWriter(
+                                            new GZIPOutputStream(new FileOutputStream(file)),
+                                            StandardCharsets.UTF_8);
+                            try {
+                                GSON.toJson(root, w);
+                            } finally {
+                                w.close();
+                            }
+                            return file;
+                        });
     }
 
     private JsonObject exportUsers(Storage storage) throws Exception {
@@ -191,122 +200,176 @@ public final class MigrationService {
 
     // ================================================================== import
 
+    private static final class ImportPlan {
+        final Map<String, List<Node>> groups = new LinkedHashMap<String, List<Node>>();
+        final Map<String, List<String>> tracks = new LinkedHashMap<String, List<String>>();
+        final Map<UUID, User> before = new LinkedHashMap<UUID, User>();
+        final List<User> users = new ArrayList<User>();
+        int skipped;
+    }
+
     public CompletableFuture<ImportResult> importFile(String name) {
+        final xyz.rexos.rexperms.api.mutation.MutationContext actor =
+                xyz.rexos.rexperms.api.mutation.MutationContext.current();
         File folder = plugin.getDataFolder();
         final File file = new File(folder, name);
         try {
-            // Block "../" escapes out of the plugin folder
-            boolean inside = file.getCanonicalPath().startsWith(folder.getCanonicalPath() + File.separator);
-            if (!inside || !file.isFile()) {
-                return failed(new IOException("File not found: plugins/RexPerms/" + name));
-            }
-        } catch (IOException e) {
-            return failed(e);
+            if (!file.getCanonicalPath().startsWith(folder.getCanonicalPath() + File.separator)
+                    || !file.isFile()) return failed(new IOException("File not found: " + name));
+        } catch (IOException ex) {
+            return failed(ex);
         }
-        return plugin.getStorage().submit(storage -> {
-            JsonObject root;
-            Reader r = new InputStreamReader(open(file), StandardCharsets.UTF_8);
-            try {
-                root = JsonParser.parseReader(r).getAsJsonObject();
-            } finally {
-                r.close();
-            }
-            int[] skipped = {0};
-            int groups = 0;
-            int tracks = 0;
-            int users = 0;
-
-            final Map<String, List<Node>> importedGroups = new LinkedHashMap<String, List<Node>>();
-            JsonObject groupsJson = obj(root, "groups");
-            if (groupsJson != null) {
-                for (Map.Entry<String, JsonElement> e : groupsJson.entrySet()) {
-                    String gName = e.getKey().toLowerCase(Locale.ROOT);
-                    if (!Group.isValidName(gName)) {
-                        skipped[0]++;
-                        continue;
-                    }
-                    List<Node> nodes = parseNodes(e.getValue().getAsJsonObject(), skipped);
-                    Group g = new Group(gName, plugin.getEpoch());
-                    g.replaceNodes(nodes);
-                    storage.saveGroup(g);
-                    importedGroups.put(gName, nodes);
-                    groups++;
-                }
-            }
-
-            final Map<String, List<String>> importedTracks = new LinkedHashMap<String, List<String>>();
-            JsonObject tracksJson = obj(root, "tracks");
-            if (tracksJson != null) {
-                for (Map.Entry<String, JsonElement> e : tracksJson.entrySet()) {
-                    String tName = e.getKey().toLowerCase(Locale.ROOT);
-                    if (!Group.isValidName(tName)) {
-                        skipped[0]++;
-                        continue;
-                    }
-                    List<String> list = new ArrayList<String>();
-                    JsonElement arr = e.getValue().getAsJsonObject().get("groups");
-                    if (arr != null && arr.isJsonArray()) {
-                        for (JsonElement g : arr.getAsJsonArray()) list.add(g.getAsString().toLowerCase(Locale.ROOT));
-                    }
-                    Track t = new Track(tName);
-                    t.setGroups(list);
-                    storage.saveTrack(t);
-                    importedTracks.put(tName, list);
-                    tracks++;
-                }
-            }
-
-            final List<User> importedUsers = new ArrayList<User>();
-            JsonObject usersJson = obj(root, "users");
-            if (usersJson != null) {
-                for (Map.Entry<String, JsonElement> e : usersJson.entrySet()) {
-                    UUID uuid;
-                    try {
-                        uuid = UUID.fromString(e.getKey());
-                    } catch (IllegalArgumentException ex) {
-                        skipped[0]++;
-                        continue;
-                    }
-                    JsonObject uo = e.getValue().getAsJsonObject();
-                    String username = uo.has("username") && !uo.get("username").isJsonNull()
-                            ? uo.get("username").getAsString() : null;
-                    User u = plugin.getUserManager().create(uuid, username);
-                    u.replaceNodes(parseNodes(uo, skipped));
-                    if (uo.has("primaryGroup") && !uo.get("primaryGroup").isJsonNull()) {
-                        u.setPrimaryGroup(uo.get("primaryGroup").getAsString());
-                    }
-                    plugin.getService().ensureDefaultGroup(u);
-                    storage.saveUser(u);
-                    if (username != null && username.matches("^[A-Za-z0-9_]{1,16}$")) {
-                        storage.saveUsername(uuid, username);
-                    }
-                    importedUsers.add(u);
-                    users++;
-                }
-            }
-
-            // Update memory on the main thread
-            Bukkit.getScheduler().runTask(plugin, () -> {
-                for (Map.Entry<String, List<Node>> e : importedGroups.entrySet()) {
-                    plugin.getGroupManager().getOrCreate(e.getKey()).replaceNodes(e.getValue());
-                }
-                for (Map.Entry<String, List<String>> e : importedTracks.entrySet()) {
-                    plugin.getTrackManager().getOrCreate(e.getKey()).setGroups(e.getValue());
-                }
-                for (User imported : importedUsers) {
-                    User live = plugin.getUserManager().get(imported.getUniqueId());
-                    if (live != null) {
-                        live.replaceNodes(imported.getNodes());
-                        live.setPrimaryGroup(imported.getPrimaryGroup());
-                    }
-                }
-                plugin.getService().refreshAllOnline();
-                plugin.getService().broadcastFullSync();
-            });
-            plugin.getService().logAction("Console", 'G', "*", "import: " + file.getName() + " (" + groups
-                    + " groups, " + tracks + " tracks, " + users + " users)", null);
-            return new ImportResult(groups, tracks, users, skipped[0]);
-        });
+        return plugin.getStorage()
+                .submit(
+                        storage -> {
+                            JsonObject root;
+                            try (Reader reader =
+                                    new InputStreamReader(open(file), StandardCharsets.UTF_8)) {
+                                root = JsonParser.parseReader(reader).getAsJsonObject();
+                            }
+                            ImportPlan plan = new ImportPlan();
+                            int[] skipped = {0};
+                            JsonObject groups = obj(root, "groups");
+                            if (groups != null)
+                                for (Map.Entry<String, JsonElement> e : groups.entrySet()) {
+                                    String id = e.getKey().toLowerCase(Locale.ROOT);
+                                    if (!Group.isValidName(id)) {
+                                        skipped[0]++;
+                                        continue;
+                                    }
+                                    plan.groups.put(
+                                            id,
+                                            parseNodes(e.getValue().getAsJsonObject(), skipped));
+                                }
+                            JsonObject tracks = obj(root, "tracks");
+                            if (tracks != null)
+                                for (Map.Entry<String, JsonElement> e : tracks.entrySet()) {
+                                    String id = e.getKey().toLowerCase(Locale.ROOT);
+                                    if (!Group.isValidName(id)) {
+                                        skipped[0]++;
+                                        continue;
+                                    }
+                                    List<String> values = new ArrayList<String>();
+                                    JsonElement arr = e.getValue().getAsJsonObject().get("groups");
+                                    if (arr != null && arr.isJsonArray())
+                                        for (JsonElement g : arr.getAsJsonArray()) {
+                                            String group = g.getAsString().toLowerCase(Locale.ROOT);
+                                            if (!Group.isValidName(group))
+                                                throw new IOException(
+                                                        "Invalid track group: " + group);
+                                            if (!values.contains(group)) values.add(group);
+                                        }
+                                    plan.tracks.put(id, values);
+                                }
+                            JsonObject users = obj(root, "users");
+                            if (users != null)
+                                for (Map.Entry<String, JsonElement> e : users.entrySet()) {
+                                    UUID id;
+                                    try {
+                                        id = UUID.fromString(e.getKey());
+                                    } catch (IllegalArgumentException ex) {
+                                        skipped[0]++;
+                                        continue;
+                                    }
+                                    JsonObject data = e.getValue().getAsJsonObject();
+                                    String username =
+                                            data.has("username")
+                                                            && !data.get("username").isJsonNull()
+                                                    ? data.get("username").getAsString()
+                                                    : null;
+                                    User desired =
+                                            new User(
+                                                    id,
+                                                    username,
+                                                    new xyz.rexos.rexperms.model.DataEpoch());
+                                    desired.replaceNodes(parseNodes(data, skipped));
+                                    if (data.has("primaryGroup")
+                                            && !data.get("primaryGroup").isJsonNull())
+                                        desired.setPrimaryGroup(
+                                                data.get("primaryGroup").getAsString());
+                                    plugin.getService().ensureDefaultGroup(desired);
+                                    User original =
+                                            plugin.getService()
+                                                    .loadStoredUserSnapshot(id, username);
+                                    plan.before.put(id, original);
+                                    plan.users.add(desired);
+                                }
+                            plan.skipped = skipped[0];
+                            return plan;
+                        })
+                .thenComposeAsync(
+                        plan ->
+                                plugin.mutate(
+                                        new xyz.rexos.rexperms.api.mutation.MutationContext(
+                                                actor.origin, actor.actor, "IMPORT"),
+                                        () -> {
+                                            final List<CompletableFuture<?>> writes =
+                                                    new ArrayList<CompletableFuture<?>>();
+                                            for (Map.Entry<String, List<Node>> e :
+                                                    plan.groups.entrySet()) {
+                                                Group group =
+                                                        plugin.getGroupManager()
+                                                                .getOrCreate(e.getKey());
+                                                group.replaceNodes(e.getValue());
+                                                writes.add(plugin.getService().save(group));
+                                            }
+                                            for (Map.Entry<String, List<String>> e :
+                                                    plan.tracks.entrySet()) {
+                                                Track track =
+                                                        plugin.getTrackManager()
+                                                                .getOrCreate(e.getKey());
+                                                track.setGroups(e.getValue());
+                                                writes.add(plugin.getService().saveTrack(track));
+                                            }
+                                            for (User desired : plan.users) {
+                                                User current =
+                                                        plugin.getUserManager()
+                                                                .get(desired.getUniqueId());
+                                                if (current == null)
+                                                    current =
+                                                            plan.before.get(desired.getUniqueId());
+                                                current.replaceNodes(desired.getNodes());
+                                                current.setPrimaryGroup(desired.getPrimaryGroup());
+                                                writes.add(plugin.getService().save(current));
+                                                final String username = desired.getUsername();
+                                                final UUID id = desired.getUniqueId();
+                                                if (username != null
+                                                        && username.matches("^[A-Za-z0-9_]{1,16}$"))
+                                                    writes.add(
+                                                            plugin.getStorage()
+                                                                    .run(
+                                                                            st ->
+                                                                                    st.saveUsername(
+                                                                                            id,
+                                                                                            username)));
+                                            }
+                                            CompletableFuture<Void> saved =
+                                                    CompletableFuture.allOf(
+                                                            writes.toArray(
+                                                                    new CompletableFuture<?>[0]));
+                                            return saved.thenApplyAsync(
+                                                    v -> {
+                                                        plugin.getService().refreshAllOnline();
+                                                        plugin.getService().broadcastFullSync();
+                                                        plugin.getService()
+                                                                .logAction(
+                                                                        actor.actor == null
+                                                                                ? actor.origin
+                                                                                        .name()
+                                                                                : actor.actor,
+                                                                        'G',
+                                                                        "*",
+                                                                        "import: " + file.getName(),
+                                                                        null);
+                                                        return new ImportResult(
+                                                                plan.groups.size(),
+                                                                plan.tracks.size(),
+                                                                plan.users.size(),
+                                                                plan.skipped);
+                                                    },
+                                                    plugin.mainThread());
+                                        }),
+                        plugin.mainThread());
     }
 
     private static InputStream open(File file) throws IOException {
@@ -320,9 +383,8 @@ public final class MigrationService {
     }
 
     /**
-     * LuckPerms node format:
-     * {"key":"x","value":true,"expiry":123,"context":{"world":"a"}} — a context value
-     * may be an array when it has several values; the first one is used.
+     * LuckPerms node format: {"key":"x","value":true,"expiry":123,"context":{"world":"a"}} — a
+     * context value may be an array when it has several values; the first one is used.
      */
     private static List<Node> parseNodes(JsonObject holder, int[] skipped) {
         List<Node> out = new ArrayList<Node>();
@@ -335,7 +397,10 @@ public final class MigrationService {
                 JsonObject o = el.getAsJsonObject();
                 String key = o.get("key").getAsString();
                 boolean value = !o.has("value") || o.get("value").getAsBoolean();
-                long expiry = o.has("expiry") && !o.get("expiry").isJsonNull() ? o.get("expiry").getAsLong() : 0L;
+                long expiry =
+                        o.has("expiry") && !o.get("expiry").isJsonNull()
+                                ? o.get("expiry").getAsLong()
+                                : 0L;
                 if (expiry > 0 && expiry <= now) {
                     skipped[0]++; // already expired
                     continue;
